@@ -25,8 +25,8 @@ This repo is being built in public, stage by stage; [`ROADMAP.md`](ROADMAP.md) i
 
 | | |
 | --- | --- |
-| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI |
-| 🔜 Planned | FastAPI `/search` + `/ask` (Stage 7) · `AGENT.md` (Stage 10) · LLM-as-judge generation eval (Stage 11) · ADRs + study guide (Stage 12) |
+| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` |
+| 🔜 Planned | FastAPI `/search` + `/ask` (Stage 7) · LLM-as-judge generation eval (Stage 11) · ADRs + study guide (Stage 12) |
 
 The badge above is **red, and that is the state of `main`**: CI runs `make check`, `make eval-retrieval`,
 a README-consistency check and an upload of `eval/report.md`, all under `if: always()` so one run reports
@@ -161,8 +161,10 @@ eval/
   report.py          renders the markdown; no computation
   report.md          the generated report (committed, so the numbers are reviewable in a diff)
   README.md          how to read the report, and why each column is there
+AGENT.md             the working agreement for agents working in this repo
+.github/workflows/   CI: make check, make eval-retrieval, a README-consistency check, report upload
 ROADMAP.md           stage-by-stage plan, decisions recorded as they were made
-docs/agent-dossier.md  nine agent runs, six incidents, and what each one cost
+docs/agent-dossier.md  twelve agent runs, nine incidents, and what each one cost
 ```
 
 Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` covers `src/`.
@@ -182,5 +184,6 @@ Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` c
 - **Generation quality is currently unmeasured.** Retrieval without a groundedness eval is half a
   harness; Stage 11 supplies the other half, and until then nothing here says anything about whether
   an answer was supported by its citations.
-- **`AGENT.md`, the study guide and the ADRs are still to come** (Stages 10 and 12). They will be
-  linked from here when they exist.
+- **The study guide and the ADRs are still to come** (Stage 12). They will be linked from here when
+  they exist. [`AGENT.md`](AGENT.md) exists now, and its own §8 lists what it cannot enforce — read that
+  section before treating it as a guarantee.

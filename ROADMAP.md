@@ -1,7 +1,7 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–9 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
-metrics, retrieval eval harness, README + agent dossier, quality gates, CI). Stage 7 (the FastAPI service) is next.
+**Status: Stages 0–6 and 8–10 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
+metrics, retrieval eval harness, README + agent dossier, quality gates, CI, AGENT.md). Stage 7 (the FastAPI service) is next.
 **`make check` is currently RED by design** — the two Stage 8 gates fail on the present retriever.
 Implementation was delegated stage-by-stage to subagents and reviewed by the parent before committing;
 each stage's gate is recorded below.
@@ -235,6 +235,35 @@ The operator's instruction was "we adjust in later phases". Recorded as a stage,
 - Plus **exactly one** good-vs-bad agent reply example (short before/after) under §5.
 - Gate: every §5 bullet from the prompt present; example count == 1.
 - Commit: `docs: AGENT.md working agreement for AI agents`
+- **DONE.** 247 lines, ten sections in the specified order, one example. Verified by command, not by
+  reading: `grep -c "^## "` → 10; the example-count grep → 1; every quoted `make X` target exists in the
+  Makefile (the only extra hits are the English phrases "make a"/"make an"/"make masks"); every quoted
+  **eval CLI** flag (`--golden`, `--k`, `--min-recall`, `--min-mrr`, `--report`) appears in both
+  `eval/README.md` and `eval/retrieval_eval.py` — the other `--flags` in the file belong to `git` and
+  `pytest` commands, which is correct and was checked separately; the `src/`-never-imports-`eval` claim
+  was checked before being written and the child pasted the three `tests/` hits, explaining why they are
+  allowed rather than hiding them.
+- Every 4-decimal figure the file quotes is present in the committed `eval/report.md` — including the
+  score ranges `4.4589–7.2278` vs `4.5290–16.5259`, which the child **recomputed from the harness**
+  rather than inheriting the two-decimal version in `ROADMAP.md`. The blended "vanity" figure in the bad
+  example (`0.83`) is not a hypothetical: `eval/report.md` line 34 prints `recall@5 0.8333`.
+- Claims I re-measured rather than trusted: `make eval-generation` really fails with
+  `No module named eval.generation_eval`; `make serve` really dies with `Error loading ASGI app. Could not
+  import module "lumen.main"`; the harness really exits `2` on an invented chunk id, an emptied
+  expectation, a duplicate case id and a split drift; `k1=1.5`, `b=0.75`; ruff at 100 columns; mypy strict
+  over `src/`; 30 cases with `"k":5`; 64 chunks / 12 documents; nine Makefile targets; the email and
+  token greps print nothing.
+- Two things I corrected on review, both of them the same failure mode — **a number that rots**:
+  `0.055 s` (I measured `0.053 s`, best of three) became `~0.05 s (best of 3, 0.053 s)`, and "all 13
+  commits conform" became the command that proves it for any future count:
+  `git log --pretty=%s | grep -vcE "^(feat|eval|test|docs|chore|ci):"` → `0`. Percentages of the
+  delegated total were also removed from the prose for the same reason — they change with every child —
+  leaving absolute minutes instead. The third was mine: a check I wrote as "prints `0`" via `grep -vc`,
+  which exits **1** when the count is zero, so the passing state reads as a shell failure; the line now
+  says to read the number and not the status.
+- **I9 in the dossier is the best argument this document works:** the brief I wrote said four runtime
+  dependencies (copied from `ROADMAP.md`); `pyproject.toml` lists five. The child wrote five, and logged
+  my error as a worked example under *When to stop and ask*.
 
 ## Stage 11 — Gated LLM-as-judge generation eval
 

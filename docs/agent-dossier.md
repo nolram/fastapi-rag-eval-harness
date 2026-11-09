@@ -44,8 +44,9 @@ Durations are the harness-recorded wall-clock of each child run, read from its `
 | 9 | 6 — harness tests | `596544a6` | 6 m 45 s | complete |
 | 10 | 8 — gates + tripwire | `5c4af6c1` | 11 m 15 s | complete (red, as designed) |
 | 11 | 9 — CI workflow | `facdf57f` | 9 m 35 s | complete |
+| 12 | 10 — `AGENT.md` | `6897d047` | 13 m 48 s | complete |
 
-**Total delegated time: 2 h 49 m. Of that, 60 m — 36% — went into two runs that timed out on the same
+**Total delegated time: 3 h 2 m. Of that, 60 m — 33% — went into two runs that timed out on the same
 stage.** The single fastest child in the build (6 m 45 s) did its job on the first try, and it is the one
 whose brief named exactly one file it was allowed to write. Stage 8 was written to that same rule — one
 file, one marker, expected-red — and cleared in one attempt.
@@ -55,7 +56,7 @@ biggest, least specified, and asked for four deliverables at once.
 
 ## Incidents
 
-### I1 — one stage ate two 30-minute timeouts (40% of all delegated compute)
+### I1 — one stage ate two 30-minute timeouts (the two longest runs in the build)
 
 **What happened.** The Stage 6 brief asked for a scoring CLI, a report renderer, an `eval/README.md`,
 five tests, and six validation items in a single child run. Run 7 produced 1,281 lines of code and
@@ -177,6 +178,24 @@ four decimals, on hardware and a Python build I never touched.
 **What it taught.** Determinism claims are worthless without a second machine. The cost of getting one
 was zero: CI was being added anyway. Also worth naming — the run went red, which is what made the log
 worth reading closely enough to notice.
+
+### I9 — the brief was wrong, and the child said so
+
+**What happened.** The Stage 10 brief told the child the repo has "four runtime dependencies" — that is
+what `ROADMAP.md` says. It wrote `AGENT.md` listing **five** and put the disagreement in §9, *When to
+stop and ask*, as a worked example: "This brief described the runtime set as four; `pyproject.toml`
+lists five. The file wins." `pyproject.toml` does list five. I had written the same wrong number into
+three documents and it took a child reading the source to notice.
+
+**What it taught.** An agent that follows instructions literally would have written "four" and nobody
+would have looked. The behaviour I wanted was not obedience to the brief but obedience to the repo, and
+the only way to get it is to make "the instruction and the code disagree" an explicit stop condition —
+the brief had to ask for the disagreement to be reported, and the child obliged by reporting the brief
+itself. I have since stopped writing counts into briefs when the file the count describes is one
+`grep` away.
+
+**Evidence.** `grep -A6 '^dependencies' pyproject.toml` prints the five runtime packages ·
+`AGENT.md` §9, last bullet · the Stage 10 handoff.
 
 ## What the briefs said
 
