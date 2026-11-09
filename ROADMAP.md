@@ -1,7 +1,7 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–8 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
-metrics, retrieval eval harness, README + agent dossier, quality gates). Stage 9 (CI) is next.
+**Status: Stages 0–9 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
+metrics, retrieval eval harness, README + agent dossier, quality gates, CI). Stage 7 (the FastAPI service) is next.
 **`make check` is currently RED by design** — the two Stage 8 gates fail on the present retriever.
 Implementation was delegated stage-by-stage to subagents and reviewed by the parent before committing;
 each stage's gate is recorded below.
@@ -211,6 +211,20 @@ The operator's instruction was "we adjust in later phases". Recorded as a stage,
   **no LLM step**, no secrets.
 - Gate: Actions run green on the pushed branch (or the failure is reported verbatim).
 - Commit: `ci: run checks and retrieval eval on every commit`
+- **DONE — first run on `main` is RED, as agreed.** Run `42705424022`: `Install via make install` ✅,
+  `make check` ❌, `make eval-retrieval` ❌, `Docs consistency` ✅, `Upload eval/report.md` ✅. Both gate
+  failures are the same two assertions with the same figures as locally — Recall@5 `0.7778`, MRR
+  `0.6713` — which is an unplanned but useful result: **the golden eval reproduces bit-for-bit on
+  GitHub's hardware**, so the determinism claim is no longer only a same-machine claim.
+- Divergences recorded: only **first-party** actions (`checkout`, `setup-python`, `upload-artifact`) —
+  no `setup-uv`, since every third-party action is an unpinned dependency in the supply chain. The plan
+  said "`uv`/pip cache"; the runner image had **no `uv`**, so `make install` took the `python3 -m venv` +
+  pip branch (proven in the step log: `Uninstalling pip-25.0.1 → Successfully installed pip-26.3`) and
+  `cache: pip` is genuinely exercised. If a future runner image ships `uv`, the pip cache silently stops
+  mattering — re-check the install step log rather than assuming the cache is live.
+- Every check step is `if: always()`: one red run reports every failing signal instead of stopping at the
+  first. `make eval-retrieval` keeps its exit code — no `-` prefix, no `|| true`, no `continue-on-error`,
+  which would silently un-block `main`.
 
 ## Stage 10 — `AGENT.md` (the deliverable you most want to study)
 

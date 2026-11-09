@@ -1,5 +1,7 @@
 # fastapi-rag-eval-harness
 
+![CI](https://github.com/nolram/fastapi-rag-eval-harness/actions/workflows/ci.yml/badge.svg)
+
 A small retrieval-augmented service for a fictional B2B insurance API ("Lumen") wrapped around the
 thing that actually makes RAG defensible: a hand-labelled dataset, a deterministic eval that runs in
 under a second with no network, and quality gates that are allowed to fail. The retrieval is BM25
@@ -23,8 +25,13 @@ This repo is being built in public, stage by stage; [`ROADMAP.md`](ROADMAP.md) i
 
 | | |
 | --- | --- |
-| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** |
-| 🔜 Planned | FastAPI `/search` + `/ask` (Stage 7) · CI (Stage 9) · `AGENT.md` (Stage 10) · LLM-as-judge generation eval (Stage 11) · ADRs + study guide (Stage 12) |
+| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI |
+| 🔜 Planned | FastAPI `/search` + `/ask` (Stage 7) · `AGENT.md` (Stage 10) · LLM-as-judge generation eval (Stage 11) · ADRs + study guide (Stage 12) |
+
+The badge above is **red, and that is the state of `main`**: CI runs `make check`, `make eval-retrieval`,
+a README-consistency check and an upload of `eval/report.md`, all under `if: always()` so one run reports
+every failing signal instead of stopping at the first. It contains no secrets and no LLM step, so no CI
+run can ever spend money.
 
 The two retrieval gates are now enforced **in the test suite as well as in the CLI**, and they fail.
 `make check` is red on `main` deliberately — see [Current numbers](#current-numbers-as-of-2026-11-09).

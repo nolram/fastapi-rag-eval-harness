@@ -7,8 +7,8 @@ The material here is not a narrative written after the fact. Every incident belo
 artifact a reviewer can re-check: a commit, a file in `git ls-files`, or a recorded run duration.
 Where something is my own recollection rather than an artifact, it says so.
 
-- **Scope of this cut:** Stages 0–8, up to the Stage 8 gate commit. Stages 0–6 were cut at `ca3bd59`;
-  Stage 8 was appended to this file rather than starting a new one.
+- **Scope of this cut:** Stages 0–9, up to the CI commit. Stages 0–6 were cut at `ca3bd59`; Stage 8 and
+  Stage 9 were appended to this file rather than starting a new one.
 - **This file is append-only.** Each stage adds a ledger row and, when something goes wrong, an
   incident. It is a snapshot of a process, not a finished report; a doc that freezes mid-build lies by
   omission.
@@ -43,8 +43,9 @@ Durations are the harness-recorded wall-clock of each child run, read from its `
 | 8 | 6 — finish harness | `7000be44` | **30 m 00 s** | **timed out** |
 | 9 | 6 — harness tests | `596544a6` | 6 m 45 s | complete |
 | 10 | 8 — gates + tripwire | `5c4af6c1` | 11 m 15 s | complete (red, as designed) |
+| 11 | 9 — CI workflow | `facdf57f` | 9 m 35 s | complete |
 
-**Total delegated time: 2 h 39 m. Of that, 60 m — 38% — went into two runs that timed out on the same
+**Total delegated time: 2 h 49 m. Of that, 60 m — 36% — went into two runs that timed out on the same
 stage.** The single fastest child in the build (6 m 45 s) did its job on the first try, and it is the one
 whose brief named exactly one file it was allowed to write. Stage 8 was written to that same rule — one
 file, one marker, expected-red — and cleared in one attempt.
@@ -165,6 +166,17 @@ not a control, it is luck.
 `make check` currently have none. A CI step that diffs the README's stated test count against
 `pytest --collect-only -q` would cost ten lines and remove the whole class of error. Recorded as work
 for Stage 9, which owns CI.
+
+### I8 — the one claim the machine checked for me
+
+The repo asserts the eval is deterministic: same inputs, byte-identical output. Every proof so far was
+run on the machine that wrote the code, which is the weakest possible venue for that claim. CI settled
+it by accident — the first Actions run reported Recall@5 `0.7778` and MRR `0.6713`, the same figures to
+four decimals, on hardware and a Python build I never touched.
+
+**What it taught.** Determinism claims are worthless without a second machine. The cost of getting one
+was zero: CI was being added anyway. Also worth naming — the run went red, which is what made the log
+worth reading closely enough to notice.
 
 ## What the briefs said
 
