@@ -7,7 +7,8 @@ The material here is not a narrative written after the fact. Every incident belo
 artifact a reviewer can re-check: a commit, a file in `git ls-files`, or a recorded run duration.
 Where something is my own recollection rather than an artifact, it says so.
 
-- **Scope of this cut:** Stages 0–6, up to commit `ca3bd59` (`eval: deterministic retrieval eval harness`).
+- **Scope of this cut:** Stages 0–8, up to the Stage 8 gate commit. Stages 0–6 were cut at `ca3bd59`;
+  Stage 8 was appended to this file rather than starting a new one.
 - **This file is append-only.** Each stage adds a ledger row and, when something goes wrong, an
   incident. It is a snapshot of a process, not a finished report; a doc that freezes mid-build lies by
   omission.
@@ -41,10 +42,12 @@ Durations are the harness-recorded wall-clock of each child run, read from its `
 | 7 | 6 — eval harness | `48930b16` | **30 m 00 s** | **timed out** |
 | 8 | 6 — finish harness | `7000be44` | **30 m 00 s** | **timed out** |
 | 9 | 6 — harness tests | `596544a6` | 6 m 45 s | complete |
+| 10 | 8 — gates + tripwire | `5c4af6c1` | 11 m 15 s | complete (red, as designed) |
 
-**Total delegated time: 2 h 28 m. Of that, 60 m — 40% — went into two runs that timed out on the
-same stage.** The single fastest child in the whole build (6 m 45 s) did the job on the first try, and
-it is the one whose brief named exactly one file it was allowed to write.
+**Total delegated time: 2 h 39 m. Of that, 60 m — 38% — went into two runs that timed out on the same
+stage.** The single fastest child in the build (6 m 45 s) did its job on the first try, and it is the one
+whose brief named exactly one file it was allowed to write. Stage 8 was written to that same rule — one
+file, one marker, expected-red — and cleared in one attempt.
 
 Stages 0–5 each completed in one attempt. The stage that broke the pattern is the one that was
 biggest, least specified, and asked for four deliverables at once.
@@ -149,6 +152,20 @@ would misdiagnose a failing gate as a broken dataset. That is now written in `ev
 before fixing" is not a virtue you have; it is a thing you have to do before opening your mouth, and
 here I had already opened it.
 
+### I7 — documentation went stale in the same minute the gates landed
+
+Stage 8 made `make check` fail and raised the test count from 67 to 70. Nothing in the repo detected
+that `README.md` still claimed "67 tests" and still described `make check` as a green command: ruff and
+mypy pass, the assertions themselves say nothing about prose. I only updated the README because I
+happened to think about it after writing the roadmap entry — an agent noticing its own docs drifted is
+not a control, it is luck.
+
+**What it taught.** Facts duplicated in prose need a mechanical owner. The committed numbers in
+`eval/report.md` have one (the eval regenerates them); the test count and the pass/fail state of
+`make check` currently have none. A CI step that diffs the README's stated test count against
+`pytest --collect-only -q` would cost ten lines and remove the whole class of error. Recorded as work
+for Stage 9, which owns CI.
+
 ## What the briefs said
 
 A child receives no chat history — only the brief, the repo, and its own reading. Briefs in this build
@@ -178,9 +195,9 @@ do".
 - **The transcripts are not in this repo.** They are large, full of dead ends, and reference paths and
   session ids that mean nothing outside the machine that ran them. The durations, the commits and the
   committed reports are the citable residue.
-- **My account of my own mistakes is self-reported.** I1's numbers, and I3 and I4, come from me. What
+- **My account of my own mistakes is self-reported.** I1's numbers, and I3, I4 and I7, come from me. What
   is independently checkable is in *Evidence* lines: `git log`, `make check`, the audits.
-- **Parent time is not measured.** Six successful children, two deaths, and a fair amount of repair
+- **Parent time is not measured.** Seven successful children, two deaths, and a fair amount of repair
   work happened against a human clock I never started.
 - **Four commits share one minute** (`17:12`: bootstrap, corpus, chunker, BM25). Commit granularity here
   is logical, not chronological: stages were reviewed and pushed together. Anyone reading the timeline as

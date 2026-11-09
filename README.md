@@ -23,8 +23,13 @@ This repo is being built in public, stage by stage; [`ROADMAP.md`](ROADMAP.md) i
 
 | | |
 | --- | --- |
-| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** |
-| 🔜 Planned | FastAPI `/search` + `/ask` (Stage 7) · eval gates as tests (Stage 8) · CI (Stage 9) · `AGENT.md` (Stage 10) · LLM-as-judge generation eval (Stage 11) · ADRs + study guide (Stage 12) |
+| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** |
+| 🔜 Planned | FastAPI `/search` + `/ask` (Stage 7) · CI (Stage 9) · `AGENT.md` (Stage 10) · LLM-as-judge generation eval (Stage 11) · ADRs + study guide (Stage 12) |
+
+The two retrieval gates are now enforced **in the test suite as well as in the CLI**, and they fail.
+`make check` is red on `main` deliberately — see [Current numbers](#current-numbers-as-of-2026-11-09).
+The plan for making them green honestly is Stage 8.5 in the roadmap: tune the retriever, never the
+labels or the thresholds.
 
 There is **no HTTP service yet**. No `curl` examples are provided because every endpoint they would
 hit returns 404. When Stage 7 lands, the quickstart below gets an API section — a README that
@@ -34,12 +39,13 @@ documents an endpoint that does not exist is the kind of artifact this repo exis
 
 ```bash
 make install          # uv if available, else python3 -m venv + pip; installs runtime + dev deps
-make check            # ruff + mypy --strict + pytest  (67 tests, no network, no LLM)
+make check            # ruff + mypy --strict + pytest  (70 tests, no network, no LLM)
 make eval-retrieval   # scores eval/golden.jsonl, rewrites eval/report.md, gates on the normal bucket
 ```
 
-`make eval-retrieval` **currently exits non-zero** on this commit. That is the intended behaviour, not
-a broken build — see [Current numbers](#current-numbers-as-of-2026-11-09).
+**Both targets currently exit non-zero on `main`**, and that is the intended state of this commit: the
+retriever misses the Recall@5 and MRR gates, so `make check` fails on two assertions and
+`make eval-retrieval` fails on two gates. See [Current numbers](#current-numbers-as-of-2026-11-09).
 
 The same thing without `make`, which is what you want when you care about the exit code:
 
@@ -81,6 +87,11 @@ against 12 documents / 64 chunks and 30 cases (18 `normal`, 6 `ambiguous`, 6 `ab
 recall@5 over normal (18 cases): 0.7778 >= 0.80 FAIL
 mrr over normal (18 cases): 0.6713 >= 0.70 FAIL
 ```
+
+The same two figures now fail as pytest assertions in `tests/test_retrieval.py`, which is why
+`make check` is red: `2 failed, 68 passed`. A third test in that file is the tripwire — green, because
+it asserts that the harness **notices** when a corpus document disappears (dropping `webhooks.md` flips
+one passing case to failing).
 
 | bucket | cases | pass | Recall@5 | Precision@5 | MRR | nDCG@5 |
 | --- | --- | --- | --- | --- | --- | --- |

@@ -1,9 +1,10 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–6 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
-metrics, retrieval eval harness). Stage 7 (the FastAPI service) is next. Implementation was delegated
-stage-by-stage to subagents and reviewed by the parent before committing; each stage's gate is recorded
-below.
+**Status: Stages 0–8 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
+metrics, retrieval eval harness, README + agent dossier, quality gates). Stage 9 (CI) is next.
+**`make check` is currently RED by design** — the two Stage 8 gates fail on the present retriever.
+Implementation was delegated stage-by-stage to subagents and reviewed by the parent before committing;
+each stage's gate is recorded below.
 
 Recorded decisions so far that later stages must respect:
 - Chunk ids are 1-based per document (`rate_limits#1` = first `##`); `doc_id` keeps the `.md` suffix.
@@ -176,6 +177,33 @@ readable thesis, then asked for a third deliverable: a public record of **how** 
 - **C3 checkpoint**: if a gate fails, **leave it failing** and explain which cases flipped and why.
   Do not relax thresholds, do not edit golden labels.
 - Commit: `test: retrieval quality gates and regression tripwire`
+- **DONE — RED, as agreed with the operator.** `pytest tests/test_retrieval.py`: 2 failed, 26 passed;
+  whole repo: 2 failed, 68 passed. `make check` exits 2 (lint and mypy pass; the `test` recipe fails).
+  `test_recall_at_5_over_the_normal_bucket_only_meets_the_gate` fails at 0.7778 vs 0.80 and
+  `test_mrr_over_the_normal_bucket_only_meets_the_gate` at 0.6713 vs 0.70 — both read from
+  `eval.retrieval_eval.run()`, neither recomputes nor hardcodes a score. The thresholds are literals in
+  the test file, deliberately **not** the CLI defaults, so lowering the default reddens these tests
+  instead of carrying them to green. No `skip`, no `xfail`, no tolerance, no bucket switch.
+- Tripwire verified **non-vacuous** by an independent parent-side probe: dropping `webhooks.md` flips
+  `n-010` (webhook retry window) from PASS to FAIL, 14 → 13 normal passes, and the monkeypatched corpus
+  restores exactly (14 passes again, same case ids). The gate figures stayed 0.7778 / 0.6713 across three
+  consecutive runs, so the patched index does not leak.
+- Divergence from the plan's wording: the prompt described the tripwire as "a test that **fails on
+  purpose**" when a doc is dropped. It is implemented the other way round — it **passes** by asserting
+  that the harness notices the loss. A test that is red in the committed state proves nothing about
+  sensitivity and just adds noise to an already-red run.
+
+## Stage 8.5 — make the gates honest-green (deferred by the operator, recorded here so it is not lost)
+
+The operator's instruction was "we adjust in later phases". Recorded as a stage, not a hope.
+
+- The gates may turn green **only** through the retriever: chunking and BM25 (`k1`, `b`, tokenisation,
+  title weighting, stopword list), never through `golden.jsonl`, `eval/metrics.py`, the two thresholds,
+  or the assertion text.
+- Every change must be justified by a named case flipping, and `eval/golden.jsonl` must stay untouched —
+  if a label is genuinely wrong, it is reported as a labelling bug, not silently repaired mid-tuning.
+- Because `eval/report.md` is committed, each tuning step shows up as a diff of the report; the README
+  numbers then have to be refreshed from the new run, which is the same single-source rule as Stage 12.
 
 ## Stage 9 — CI
 
