@@ -1,0 +1,137 @@
+# CI for the Lumen RAG harness.
+#
+# This file is the enforcement point for the repo's two standing rules:
+#
+#   1. The quality gates stay visible. `make check` and `make eval-retrieval`
+#      exit non-zero on `main` right now, and a red Actions run that shows both
+#      of them failing is this workflow working, not this workflow broken.
+#      Every check below is `if: always()` so one run reports every failing
+#      signal instead of stopping at the first one.
+#
+#   2. Nothing in CI makes a paid LLM call. There is no `secrets:` block, no
+#      API-key env var, and no step that touches the network beyond
+#      `make install` (PyPI) and the actions' own downloads. Their absence is
+#      the feature; adding one is a deliberate edit to this file, not a
+#      side effect of a dependency bump.
+#
+# Supply chain: GitHub's first-party actions only -- no setup-uv, no third-party
+# cache actions, because every extra action is an unpinned dependency. Python is
+# pinned to 3.12 to match `requires-python` in pyproject.toml, and installation
+# goes through the repo's own `make install` so CI runs the path README.md tells
+# a human to run.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install via make install
+        run: |
+          make install
+          # The Makefile builds .venv instead of activating it, so put its bin
+          # directory on PATH for the steps that call tools directly.
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: make check (ruff + mypy --strict + pytest)
+        if: always()
+        run: make check
+
+      # No `-` prefix, no `|| true`, no continue-on-error: eval-retrieval's
+      # non-zero exit is the gate itself, and swallowing it here would silently
+      # un-block main. The target also rewrites eval/report.md, which the upload
+      # step below publishes from this same workspace.
+      - name: make eval-retrieval (golden-set gates, rewrites eval/report.md)
+        if: always()
+        run: make eval-retrieval
+
+      # Guards the drift this repo actually committed: the README states the
+      # test count in prose, and the suite grew 67 -> 70 with nothing noticing.
+      - name: Docs consistency (README test count vs pytest collection)
+        if: always()
+        run: |
+          python - <<'PY'
+          """Compare the test count claimed in README.md with what pytest collects.
+
+          Honest scope: this verifies one line in one file -- the number in
+          README.md's `pytest  (N tests, no network, no LLM)` line -- against the
+          count `pytest --collect-only -q` reports. It does not check the rest of
+          README.md, docs/, ROADMAP.md, the gate thresholds, or the reported
+          metrics. A stale number anywhere else still passes this step.
+          """
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          README = Path("README.md")
+          CLAIM = re.compile(r"pytest\s+\((\d+)\s+tests?\b")
+
+          lines = README.read_text(encoding="utf-8").splitlines()
+          claims = [
+              (number, line, int(match.group(1)))
+              for number, line in enumerate(lines, start=1)
+              if (match := CLAIM.search(line))
+          ]
+          if not claims:
+              print(f"FAIL: no 'pytest  (N tests, ...)' line found in {README}.")
+              print("This step only guards the line it can find: deleting the line deletes the guard.")
+              sys.exit(1)
+
+          collection = subprocess.run(
+              [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+              capture_output=True,
+              text=True,
+          )
+          counted = re.search(r"(\d+) tests? collected", collection.stdout)
+          if collection.returncode != 0 or counted is None:
+              print(
+                  f"FAIL: pytest --collect-only -q produced no collected-test count "
+                  f"(exit {collection.returncode})."
+              )
+              print(collection.stdout[-2000:])
+              print(collection.stderr[-2000:])
+              sys.exit(1)
+          collected = int(counted.group(1))
+
+          print(f"pytest --collect-only -q collects: {collected} tests")
+          stale = []
+          for number, line, claimed in claims:
+              print(f"{README}:{number} claims {claimed} tests | {line.strip()}")
+              if claimed != collected:
+                  stale.append((number, claimed))
+
+          if stale:
+              for number, claimed in stale:
+                  print(f"MISMATCH: {README}:{number} says {claimed} tests; pytest collects {collected} tests")
+              sys.exit(1)
+
+          print(f"consistent: {README} and pytest agree on {collected} tests")
+          PY
+
+      - name: Upload eval/report.md
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: eval/report.md
+          if-no-files-found: error
