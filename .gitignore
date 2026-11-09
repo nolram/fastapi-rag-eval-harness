@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local secrets / env files (only .env.example is committed)
+.env
+.env.local
+
+# Eval output: eval/report.md is committed on purpose, caches are not
+eval/.cache/
+
+# OS
+.DS_Store

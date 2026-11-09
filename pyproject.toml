@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lumen-rag-harness"
+version = "0.1.0"
+description = "Retrieval-first RAG evaluation harness for the fictional Lumen B2B insurance API."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic>=2",
+    "pydantic-settings",
+    "httpx",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+    "mypy",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["lumen*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.format]
+# ruff-format defaults (double quotes, magic trailing comma, space indentation)
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+files = ["src"]
+# `packages` is intentionally unset: mypy rejects config that sets both
+# `files` and `packages`, and `files = ["src"]` already covers the package.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
