@@ -33,7 +33,7 @@ serve:
 	$(VENV)/bin/uvicorn lumen.main:app --reload
 
 eval-retrieval:
-	$(PY) -m eval.retrieval_eval
+	$(PY) -m eval.retrieval_eval --golden eval/golden.jsonl --k 5 --min-recall 0.80 --min-mrr 0.70 --report eval/report.md
 
 eval-generation:
 	$(PY) -m eval.generation_eval

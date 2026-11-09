@@ -1,8 +1,9 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–5 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
-metrics). Stage 6 (the retrieval eval CLI) is next. Implementation was delegated stage-by-stage to
-subagents and reviewed by the parent before committing; each stage's gate is recorded below.
+**Status: Stages 0–6 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
+metrics, retrieval eval harness). Stage 7 (the FastAPI service) is next. Implementation was delegated
+stage-by-stage to subagents and reviewed by the parent before committing; each stage's gate is recorded
+below.
 
 Recorded decisions so far that later stages must respect:
 - Chunk ids are 1-based per document (`rate_limits#1` = first `##`); `doc_id` keeps the `.md` suffix.
@@ -21,9 +22,18 @@ Recorded decisions so far that later stages must respect:
   asserts the gates against the same bucket the CLI gates on.
 - `reciprocal_rank` is deliberately **not** "at k": a ground truth at rank 6 still contributes
   1/6, which is why MRR is reported next to the score distribution rather than alone.
+- **`make eval-retrieval` exits 2, not 1** (measured, Stage 6): `make` exits 2 for any failed recipe, so
+  the CLI's exit-code contract (0 pass / 1 gate failed / 2 golden invalid) is only visible when the module
+  is run directly. CI must gate on *non-zero* and read the printed verdict to tell a failed gate from a
+  corrupt golden file. Recorded in `eval/README.md`.
+- The abstention threshold sweep found **no separating threshold at all**: abstention `top_score`s span
+  4.46–7.23, answerable `normal` scores span 4.53–16.53, so the ranges overlap and the cheapest
+  threshold covering all 6 abstentions (`t > 7.23`) removes the answer from 7 of 18 `normal` cases.
+  This is a measured result, not a gap to close; any later "just add a threshold" change must cite it.
 
-Execution plan for the TASK prompt. **Nothing is implemented yet.** Each stage has: goal, files,
-commands, exit gate, and commit. Stages are ordered so that the two mandated orderings hold:
+Execution plan for the TASK prompt (Stages 0–6 are done; the rest is still ahead of us). Each stage
+has: goal, files, commands, exit gate, and commit. Stages are ordered so that the two mandated orderings
+hold:
 
 1. `golden.jsonl` is written **before** any chunker/BM25 tuning (Stage 4 before Stage 6).
 2. README numbers are pasted **only** from a real `make eval-retrieval` run (Stage 6 output → Stage 12).
@@ -119,6 +129,17 @@ dir, then `git init` inside it). Never hardcode username — use `gh api user -q
 - Commit: `eval: deterministic retrieval eval harness`
 - **C2 checkpoint**: paste literal output — Recall@5, Precision@5, MRR, nDCG@5, threshold curve,
   **even if the numbers are bad**. Bad metrics are the point of the exercise.
+- **DONE — gate FAILED, and that is the recorded outcome.** Measured over the `normal` bucket (18 cases,
+  k=5): Recall@5 **0.7778** (gate 0.80 → FAIL), MRR **0.6713** (gate 0.70 → FAIL), Precision@5 0.1556,
+  nDCG@5 0.6979; 14/18 normal cases pass. `ambiguous` 6/6. Run time 0.06s, byte-identical stdout and
+  `report.md` across runs. **Nothing was retuned to make this green**: `golden.jsonl`, `metrics.py`, the
+  thresholds, the corpus and the ranker are untouched. `tests/test_retrieval.py` still has no gate
+  asserts (reserved for Stage 8), so `make check` is green while `make eval-retrieval` exits non-zero —
+  that gap closes in Stage 8, which will fail until the retriever improves.
+- Known debt, deliberately not paid now: `eval/retrieval_eval.py` + `eval/report.py` are 1.04k lines
+  (622 + 418), more than this repo's "less code" premise wants. Two delegated attempts to trim it hit
+  the 30-minute child timeout; a third pass is welcome but must keep the rendered output byte-identical,
+  which is why `/tmp` reference captures and `diff` are the acceptance test for it.
 
 ## Stage 7 — FastAPI service
 

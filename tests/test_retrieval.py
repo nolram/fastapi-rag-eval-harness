@@ -5,10 +5,24 @@ file marks where Stage 8 appends the Recall@5 / MRR gates and the corpus-regress
 """
 
 import dataclasses
+import json
 from inspect import signature
+from pathlib import Path
 
 import pytest
 
+from eval import report
+from eval.retrieval_eval import (
+    DEFAULT_K,
+    DEFAULT_MIN_MRR,
+    DEFAULT_MIN_RECALL,
+    EXPECTED_COUNTS,
+    TYPE_ABSTENTION,
+    TYPE_NORMAL,
+    EvalResult,
+    main,
+    run,
+)
 from lumen import retrieval
 from lumen.chunking import Chunk, load_corpus
 from lumen.retrieval import BM25, RetrievedResult, retrieve, tokenize
@@ -228,6 +242,86 @@ def test_default_index_can_be_rebuilt_from_a_monkeypatched_corpus(
     # 1-chunk substitute index was somehow still cached.
     restored = retrieve("policy claim refund", k=5)
     assert len({chunk.doc_id for chunk in restored.chunks}) > 1
+
+
+GOLDEN_PATH = Path(__file__).resolve().parent.parent / "eval" / "golden.jsonl"
+# The id substituted into the tmp copy of the golden file by the rejection test below: a chunk the
+# real corpus does not contain, so `load_golden` must refuse the whole file.
+MISSING_CHUNK_ID = "no-such-chunk#1"
+
+
+def _run_golden(k: int = DEFAULT_K) -> EvalResult:
+    """Score the committed golden file through the harness at one cut-off."""
+    return run(GOLDEN_PATH, k, DEFAULT_MIN_RECALL, DEFAULT_MIN_MRR)
+
+
+def _normal_pass_count(k: int) -> int:
+    """How many ``normal`` cases the harness passes at a single cut-off."""
+    return sum(
+        1
+        for case in _run_golden(k).cases
+        if case.case_type == TYPE_NORMAL and case.case_pass is True
+    )
+
+
+def _corrupt_golden_copy(tmp_path: Path) -> Path:
+    """The golden file rewritten under ``tmp_path`` with one expected chunk id the corpus lacks."""
+    lines = GOLDEN_PATH.read_text(encoding="utf-8").splitlines()
+    first: dict[str, object] = json.loads(lines[0])
+    first["expected_chunk_ids"] = [MISSING_CHUNK_ID]
+    lines[0] = json.dumps(first)
+    corrupt = tmp_path / "golden-with-unknown-chunk.jsonl"
+    corrupt.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return corrupt
+
+
+def test_the_shipped_golden_file_is_valid_because_its_exit_code_is_never_two(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # 0 means every gate cleared and 1 means a gate failed; only 2 says load_golden refused the
+    # file. The committed dataset must never land there, whatever the retriever is scoring.
+    exit_code = main(["--golden", str(GOLDEN_PATH), "--k", str(DEFAULT_K)])
+    capsys.readouterr()
+    assert exit_code in (0, 1)
+
+
+def test_abstention_cases_reach_the_report_as_recall_none_and_reciprocal_rank_zero() -> None:
+    abstentions = [case for case in _run_golden().cases if case.case_type == TYPE_ABSTENTION]
+    assert len(abstentions) == EXPECTED_COUNTS[TYPE_ABSTENTION]
+    # The repo's central claim, asserted on the harness' own CaseResult objects rather than by
+    # calling eval.metrics directly: absence of ground truth must not become a zero.
+    assert [case.recall for case in abstentions] == [None] * len(abstentions)
+    # 0.0 exactly, not pytest.approx: reciprocal_rank returns the literal 0.0 for no ground truth.
+    assert [case.reciprocal_rank for case in abstentions] == [0.0] * len(abstentions)
+
+
+def test_scoring_twice_replays_the_same_cases_and_a_byte_identical_report() -> None:
+    first, second = _run_golden(), _run_golden()
+    assert first.cases == second.cases
+    # The report is the artifact a human reads, so compare the bytes it would be written as.
+    first_bytes = report.render_markdown(first).encode("utf-8")
+    second_bytes = report.render_markdown(second).encode("utf-8")
+    assert first_bytes == second_bytes
+
+
+def test_the_cli_k_override_reaches_scoring_with_11_14_and_15_normal_passes() -> None:
+    # Measured on the committed dataset, not guessed: widening the cut-off from 1 to 5 recovers
+    # three normal cases and 5 -> 10 one more. run() is what main() calls with the parsed --k, so a
+    # flag that never reached the cut-off would give three identical counts here.
+    assert {k: _normal_pass_count(k) for k in (1, 5, 10)} == {1: 11, 5: 14, 10: 15}
+
+
+def test_a_golden_file_naming_an_unknown_expected_chunk_is_rejected_with_exit_code_two(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    corrupt_path = _corrupt_golden_copy(tmp_path)
+    exit_code = main(["--golden", str(corrupt_path), "--k", str(DEFAULT_K)])
+    stderr = capsys.readouterr().err
+    # Exit 2 is validation, not a failed gate: the file is refused before any metric is computed,
+    # and the message names the invented id so whoever edited the dataset knows which line to fix.
+    assert exit_code == 2
+    assert MISSING_CHUNK_ID in stderr
 
 
 # Stage 8 appends below this line: `Recall@5 >= 0.80` and `MRR >= 0.70` quality gates (each with the
