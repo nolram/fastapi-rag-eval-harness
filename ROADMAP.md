@@ -1,8 +1,8 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–4 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`). Stage 5
-(metrics) is next. Implementation was delegated stage-by-stage to subagents and reviewed by the
-parent before committing; each stage's gate is recorded below.
+**Status: Stages 0–5 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
+metrics). Stage 6 (the retrieval eval CLI) is next. Implementation was delegated stage-by-stage to
+subagents and reviewed by the parent before committing; each stage's gate is recorded below.
 
 Recorded decisions so far that later stages must respect:
 - Chunk ids are 1-based per document (`rate_limits#1` = first `##`); `doc_id` keeps the `.md` suffix.
@@ -14,6 +14,13 @@ Recorded decisions so far that later stages must respect:
   source line (the chunker preserves line breaks).
 - Golden labels were written without ever running the ranker (audited), so a Stage 6 failure is a
   retriever miss, not a labelling artifact.
+- **Gate scoping (decided before any number was computed):** the `--min-recall` / `--min-mrr` gates
+  apply to the `normal` bucket only, because blending buckets is exactly what this repo forbids and
+  the 6 abstention cases have `Recall = None` and `RR = 0.0` by construction. The CLI must still
+  print the global, diluted figures as a non-gated transparency line, and `tests/test_retrieval.py`
+  asserts the gates against the same bucket the CLI gates on.
+- `reciprocal_rank` is deliberately **not** "at k": a ground truth at rank 6 still contributes
+  1/6, which is why MRR is reported next to the score distribution rather than alone.
 
 Execution plan for the TASK prompt. **Nothing is implemented yet.** Each stage has: goal, files,
 commands, exit gate, and commit. Stages are ordered so that the two mandated orderings hold:
@@ -93,6 +100,11 @@ dir, then `git init` inside it). Never hardcode username — use `gh api user -q
 - `tests/test_metrics.py`: hand-computed expected values, incl. the `None` path and partial-relevance nDCG.
 - Gate: `pytest tests/test_metrics.py` green.
 - Commit: `eval: retrieval metrics with abstention-safe aggregation`
+- **DONE.** Parent-side audit, independent of the child's tests: hand-checked recall/precision/RR/nDCG
+  on a 3-relevant / 5-slot case; precision denominator proven to be `k` and not `len(retrieved)`;
+  duplicate ids do not inflate credit; `k=0` raises; and a **brute-force reference nDCG cross-checked
+  against 3000 random orderings with 0 mismatches**. Also confirmed the repo's central claim in
+  numbers: two rankings with identical Recall@5 = 1.0 score nDCG@5 1.0 vs 0.501.
 
 ## Stage 6 — Deterministic retrieval eval + report
 
