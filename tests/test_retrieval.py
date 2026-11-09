@@ -327,3 +327,91 @@ def test_a_golden_file_naming_an_unknown_expected_chunk_is_rejected_with_exit_co
 # Stage 8 appends below this line: `Recall@5 >= 0.80` and `MRR >= 0.70` quality gates (each with the
 # comment "if this fails, fix the retriever, not the assertion") plus the corpus-regression tripwire
 # built on the monkeypatch + default_index.cache_clear() mechanism shown above.
+
+
+# The thresholds are literals here on purpose, not DEFAULT_MIN_RECALL / DEFAULT_MIN_MRR: a
+# threshold lowered in eval/retrieval_eval.py must turn these two tests redder, not carry them
+# quietly to green. The measured values, by contrast, are never written down — they come from
+# `run`, so `eval/metrics.py` stays the only place a metric is computed.
+GATE_MIN_RECALL = 0.80
+GATE_MIN_MRR = 0.70
+# The document the tripwire drops, chosen because two normal cases name a chunk from it. Dropping
+# a document the golden file never asks for would leave the pass set untouched and prove nothing.
+CRITICAL_DOC_ID = "webhooks.md"
+
+
+def _normal_gate_readings() -> dict[str, tuple[float | None, int]]:
+    """The ``normal`` bucket's gate readings at the gate cut-off, keyed by the harness' own names.
+
+    Each reading is ``(observed, n_cases)`` taken straight off ``EvalResult.gates`` — the same two
+    numbers printed under ``## Gates`` in ``eval/report.md``. Nothing here recomputes a metric, so
+    a metric bug can only live where it belongs, and neither threshold line can drift from the
+    report a human reads.
+    """
+    return {
+        gate.metric: (gate.observed, gate.n_cases)
+        for gate in _run_golden(DEFAULT_K).gates
+        if gate.bucket == TYPE_NORMAL
+    }
+
+
+def _normal_pass_ids(result: EvalResult) -> set[str]:
+    """The ids of the ``normal`` cases the harness passes — the pass set the tripwire compares."""
+    return {
+        case.id for case in result.cases if case.case_type == TYPE_NORMAL and case.case_pass is True
+    }
+
+
+def test_recall_at_5_over_the_normal_bucket_only_meets_the_gate() -> None:
+    # If this fails, fix the retriever. Not this assertion, not the 0.80, not golden.jsonl: all
+    # three edits make the number mean nothing while making CI look fine.
+    observed, n_cases = _normal_gate_readings()[f"recall@{DEFAULT_K}"]
+    assert observed is not None, "the normal bucket has no recall at all, which is not a pass"
+    assert observed >= GATE_MIN_RECALL, (
+        f"recall@{DEFAULT_K} over the {n_cases} normal cases is {observed:.4f}, below the "
+        f"{GATE_MIN_RECALL:.2f} gate. Fix the retriever, not this gate."
+    )
+
+
+def test_mrr_over_the_normal_bucket_only_meets_the_gate() -> None:
+    # Same discipline as the recall gate: this assertion and this threshold are not the fix.
+    # It is ``normal``-only because the abstention cases carry reciprocal_rank 0.0 by construction;
+    # averaging them in would flatter BM25 with numbers that mean "no ground truth", not "missed".
+    observed, n_cases = _normal_gate_readings()["mrr"]
+    assert observed is not None, "the normal bucket has no reciprocal rank, which is not a pass"
+    assert observed >= GATE_MIN_MRR, (
+        f"mrr over the {n_cases} normal cases is {observed:.4f}, below the "
+        f"{GATE_MIN_MRR:.2f} gate. Fix the retriever, not this gate."
+    )
+
+
+def test_the_harness_notices_when_a_critical_corpus_document_is_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A claim about the harness' sensitivity, not about what the corpus happens to contain.
+
+    ``webhooks.md`` is only the lever. If the ``normal`` pass set survived losing a document two
+    of its cases name chunks from, the harness would be scoring a corpus it never indexed and
+    every figure in ``eval/report.md`` would be decoration.
+    """
+    before = _normal_pass_ids(_run_golden(DEFAULT_K))
+    # The exact monkeypatch + cache_clear() pair of the rebuild test above. Only the index sees the
+    # shrunken corpus: `run` still validates golden.jsonl against the real one, so this measures a
+    # weaker retriever over a still-valid dataset rather than a golden file that stopped loading.
+    corpus = [chunk for chunk in load_corpus() if chunk.doc_id != CRITICAL_DOC_ID]
+    monkeypatch.setattr(retrieval, "load_corpus", lambda: corpus)
+    retrieval.default_index.cache_clear()
+    after = _normal_pass_ids(_run_golden(DEFAULT_K))
+    # Restored before any assert, so a red assertion below cannot leave the shrunken index cached
+    # for whatever test runs next, in whatever order pytest reaches it.
+    monkeypatch.undo()
+    retrieval.default_index.cache_clear()
+
+    lost = sorted(before - after)
+    assert lost, (
+        f"dropping {CRITICAL_DOC_ID} cost the normal bucket no cases: the harness passed "
+        f"{len(before)} of them with and without a document it should have missed."
+    )
+    assert _normal_pass_ids(_run_golden(DEFAULT_K)) == before, (
+        "the monkeypatch leaked: the default index no longer scores the real corpus"
+    )
