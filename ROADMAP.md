@@ -1,8 +1,19 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–3 complete** (bootstrap, corpus, chunker, BM25 retrieval). Stage 4 (`golden.jsonl`)
-is next. Implementation was delegated stage-by-stage to subagents and reviewed by the parent before
-committing; each stage's gate is recorded below.
+**Status: Stages 0–4 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`). Stage 5
+(metrics) is next. Implementation was delegated stage-by-stage to subagents and reviewed by the
+parent before committing; each stage's gate is recorded below.
+
+Recorded decisions so far that later stages must respect:
+- Chunk ids are 1-based per document (`rate_limits#1` = first `##`); `doc_id` keeps the `.md` suffix.
+- All 30 golden cases use `k: 5`; the CLI `--k` overrides uniformly (study-guide exercise 3).
+- `must_include` / `must_not_include` are **answer-level** constraints (generation eval), reported as
+  information in the retrieval eval but never a retrieval gate: a retrieved chunk that happens to
+  contain a `must_not_include` token is not a retrieval failure.
+- Matching of `must_include` is case-insensitive and each string is guaranteed to sit on a single
+  source line (the chunker preserves line breaks).
+- Golden labels were written without ever running the ranker (audited), so a Stage 6 failure is a
+  retriever miss, not a labelling artifact.
 
 Execution plan for the TASK prompt. **Nothing is implemented yet.** Each stage has: goal, files,
 commands, exit gate, and commit. Stages are ordered so that the two mandated orderings hold:
@@ -67,6 +78,12 @@ dir, then `git init` inside it). Never hardcode username — use `gh api user -q
   every referenced chunk id exists, `abstention` ⇒ `expected_chunk_ids == [] and should_abstain`.
 - Gate: validator clean. **No BM25 parameter tuning in this stage.**
 - Commit: `eval: hand-labelled golden dataset (pre-tuning)`
+- **DONE.** 30 cases (18/6/6), 12/12 docs covered by `normal`, `k=5` uniform. Parent-side audit:
+  every `must_include` verified case-insensitively inside its expected chunk *and on one line*; no
+  `must_not_include` contradicts its own expected chunk; ambiguous queries never name a market;
+  abstention topics grep-verified absent. Parent audited the child's session transcript: 0 of its 12
+  commands imported or ran `lumen.retrieval`. Validation is not a committed file — it belongs in
+  `eval/retrieval_eval.py` (Stage 6), so §3's file tree stays exact.
 
 ## Stage 5 — Metrics with abstention-safe semantics
 
