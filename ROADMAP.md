@@ -141,6 +141,22 @@ dir, then `git init` inside it). Never hardcode username — use `gh api user -q
   the 30-minute child timeout; a third pass is welcome but must keep the rendered output byte-identical,
   which is why `/tmp` reference captures and `diff` are the acceptance test for it.
 
+## Stage 6.5 — README + agent dossier (added mid-build at the operator's request)
+
+Not in the original plan. The operator asked for a README before Stage 8 because the repo had no
+readable thesis, then asked for a third deliverable: a public record of **how** agents built it.
+
+- `README.md` written now, **Stage 12 finalises it**: it must gain the API quickstart + `curl` once the
+  service exists, and keep the rule that no number appears here that is absent from `eval/report.md`.
+- `docs/agent-dossier.md` is a **living document**, append-only per stage: a ledger row for every
+  delegated run (wall-clock from the run metadata) plus an incident write-up. First cut covers Stages 0–6
+  (`ca3bd59`): 9 runs, 2 h 28 m of delegated time, 40% of it burned on two Stage 6 timeouts.
+- Divergence recorded: the README promised no `curl` because no endpoint exists; if Stage 7 slips, the
+  README must be edited, not quietly left optimistic.
+- Standing rules added by this stage, learned from the incidents:
+  one write target per child brief; after any child death run `git status --short` then `make check`
+  before relaunching; every "what it does" claim in docs must come from having run the command.
+
 ## Stage 7 — FastAPI service
 
 - `config.py` (pydantic-settings), `schemas.py` (pydantic v2), `prompts.py` (`PROMPT_VERSION` +
