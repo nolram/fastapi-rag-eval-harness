@@ -238,7 +238,9 @@ Two lessons that generalise past this repo:
 
 ## What the complete run found (30 of 30 cases answered)
 
-With the ceiling corrected, every case got an answer and a verdict: no answer errors, no judge errors.
+With the ceiling corrected, every case got an answer. Judging was not so clean: in the committed run one
+judge reply did not parse, and `n-010` is named as a judge error and excluded from every judge
+denominator rather than being recounted as `supported: false`.
 Three results are worth carrying forward.
 
 **The two harnesses agree on the same three cases, independently.** The generation eval found two
@@ -250,24 +252,72 @@ chunk never reaches the prompt, so the model correctly declines to invent it. **
 running the cheap eval and the expensive one at the same time**, and it is the only cross-validation in
 this repo that was not designed as cross-validation.
 
-**One disagreement is probably a bug in the human label, and it stayed.** One `normal` answer contained
-one of its own `must_not_include` strings, so the human label says the answer is wrong. The judge said
-`supported: true` and quoted the retrieved context: `idempotency#3`, third of the five chunks offered
-for that query, states *"Use at most 3 retries and reuse the same key for every attempt."* The forbidden
-string for `n-018` is `at most 3 retries` — the label forbids a sentence the corpus actually says, on a
-query that retrieves it. The judge is the more likely of the two to be right.
+**The one disagreement was two correct answers describing different things — and my first read of it was
+wrong.** One `normal` answer (`n-018`) contained its own forbidden string, `at most 3 retries`. The
+judge said `supported: true` and quoted the context: `idempotency#3`, third of the five chunks offered
+for that query, states *"Use at most 3 retries and reuse the same key for every attempt."* I wrote, in
+the commit and below, that this was probably a bad label.
 
-The label was not edited. `eval/golden.jsonl` is read-only for agents by rule, and re-labelling a case
-because a model disagreed with it is the exact move that turns a golden set into a mirror — so this is
-recorded as open debt for a human to settle, not fixed silently. What it establishes as a measurement
-lesson stands either way: **a string prohibition on a paraphrase-prone corpus can punish a true
-statement**, and the only reason this one surfaced is that the disagreement list prints the judge's
-reason next to the human label instead of collapsing both into a rate.
+It is not, and the sentence was wrong before I measured anything: I had looked at one case. Auditing all
+of them: **10 of the 18 `normal` cases carry a prohibition, and in 4 of them the forbidden string sits in
+a chunk retrieval offers for that very query while appearing in none of the expected chunks** — `n-007`,
+`n-009`, `n-010`, `n-018`, and every one of them the same shape. A prohibition placed in a *neighbour*
+of the expected chunk is not the corpus calling a statement false. It is a guard against the retriever's
+own noise: it hands the model five chunks when one is the source, and importing the next document's rule
+is exactly the error worth catching. The label and the judge were never in conflict — the label says
+"not this question's rule", the judge says "and not false either".
+
+**So the fix went into the tool, not into my prose.** The report now computes that count on every run
+and states it — *"4 of the 10 `normal` cases carrying a prohibition have that exact string present in
+the offered context and in none of their expected chunks"* — and the calibration check is named
+`human says off-scope import vs judge supported=false`. A sentence I wrote once would have been corrected
+once; a field the harness recomputes cannot drift back. `tests/test_generation_eval.py` also locks the
+four case ids, so a future edit that moves a string out of a neighbouring chunk to make a disagreement
+vanish fails a test instead of passing quietly.
+
+The label was still not edited. `eval/golden.jsonl` is read-only for agents by rule, re-labelling to
+erase a disagreement is how a golden set becomes a mirror, and now there is a third reason: **the
+collision is the detector working**. What my wrong sentence established as a lesson stands anyway —
+**a prohibition on a paraphrase-prone corpus can punish a true statement**, which is why the report says
+*off scope* and not *wrong*, and why the disagreement list prints the judge's reason next to the human
+label instead of collapsing both into a rate.
+
+### The same eval twice is not the same measurement
+
+The committed report is the **second** complete run of the same code against the same endpoint. Run 1's
+figures are no longer in this file — run 2 overwrote the artefact that produced them — so they are
+quoted from the report as committed: `git show 286890b:eval/generation_report.md`. Both runs used
+`temperature: 0` in both legs:
+
+| | run 1 | run 2 |
+| --- | --- | --- |
+| `normal` must_include coverage | 0.7500 | 0.7222 |
+| chunks cited per `normal` answer | 1.1667 | 1.2222 |
+| answers the judge supported | 18 of 18 | 15 of 18 |
+| judge errors | 0 | 1 (`n-010`) |
+
+What stayed identical is the part worth building on: the two wrong abstentions are `n-007` and `n-015`
+in both runs, the one label/judge disagreement is `n-018` in both with the same stated reason, refusal
+calibration is 6/6 in both, and every answer error count is 0. What moved is everything that depends on
+the model's wording and the judge's reading of it.
+
+That is the strongest argument in this repo against gating judge numbers: **a threshold on `supported`
+would have failed between these two runs with no code change and no corpus change.** `temperature: 0`
+bounds sampling, not reasoning — a model that thinks before answering can still take a different path
+through the same context, and a model that grades prose is reading it fresh every time. Two runs is not
+a distribution; it is enough to say the variance is not zero, which is enough to say no gate here has a
+legitimate number to sit on yet.
 
 ### Technical debt this stage leaves open
 
-- **The `n-018` label is disputed and unresolved** (above). Until a human re-reads `idempotency#3`, one
-  of the calibration denominators is suspect.
+- **Repeating this eval is not free, and repeating it is not the same measurement.** Two runs exist, they
+  differ as shown above, and the harness cannot see it: nothing compares a report to the previous report,
+  so drift is only visible through `git diff` by someone who thinks to look.
+- **`must_not_include` measures scope, not truth, and the two are still one field.** `n-018` is resolved
+  as a wording problem, not a label problem, but a case that imports a neighbour's rule and a case that
+  states something the corpus denies are counted in the same column and would need different fixes.
+  Splitting them is a schema change: `contradicts_docs` versus `off_scope_terms`. Only 1 of the 4
+  off-scope guards fired in the recorded run, so the other 3 are latent.
 - **Calibration denominators are tiny by construction**: six `should_abstain` cases for the refusal
   check, and one violated `must_not_include` for the breach check. The agreement figures describe this
   run; they do not rank anything.

@@ -86,7 +86,7 @@ makes a real request or depends on one.
 
 ```bash
 make install          # uv if available, else python3 -m venv + pip; installs runtime + dev deps
-make check            # ruff + mypy --strict + pytest  (140 tests, no network, no LLM)
+make check            # ruff + mypy --strict + pytest  (143 tests, no network, no LLM)
 make eval-retrieval   # scores eval/golden.jsonl, rewrites eval/report.md, gates on the normal bucket
 make eval-generation  # with no LLM_API_KEY this prints one skip line and exits 0 — CI has no key
 ```
@@ -138,7 +138,7 @@ mrr over normal (18 cases): 0.7269 >= 0.70 PASS
 
 Those two figures are also pytest assertions in `tests/test_retrieval.py`, and they were **failing here
 for five stages** — Stage 8.5 moved them past the bar by changing the analyser and nothing else (see
-[What Stage 8.5 changed](#what-stage-85-changed)). The whole suite is `pytest (140 tests, 0 failures)`;
+[What Stage 8.5 changed](#what-stage-85-changed)). The whole suite is `pytest (143 tests, 0 failures)`;
 a third test in that file is the tripwire — green, because it asserts that the harness **notices** when a
 corpus document disappears (dropping `webhooks.md` flips one passing case to failing).
 

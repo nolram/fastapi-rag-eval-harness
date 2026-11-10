@@ -429,6 +429,35 @@ would have caught it for free is a five-line stdlib scan for a `name:` line carr
 an assertion that any commit touching `.github/` shows a CI run *with jobs*. Not built yet; recorded in
 ROADMAP as debt, which is the honest alternative to pretending the mistake was unpreventable.
 
+### I21 — I published a conclusion drawn from one case, and the class contradicted it
+
+**What happened.** The generation eval found one case where the human label and the judge disagreed.
+I wrote the interpretation into three places — the commit message of `286890b`, `eval/README.md`, and an
+open question in `ROADMAP.md` — and it said the label was "probably a bug", "the judge is the more
+likely of the two to be right". Next morning the operator asked what, exactly, needed deciding. Answering
+that required the audit I had skipped: check **all** ten `normal` cases carrying a prohibition for
+whether the forbidden string appears in the context their own query retrieves.
+
+Four of the ten do collide, and all four have the identical shape: the string is in a chunk retrieval
+offers and in none of the *expected* chunks. That is not a corpus contradicting a label; it is a guard
+placed deliberately against the retriever's noise — five chunks offered, one is the source, and importing
+the neighbour's rule is the error worth catching. The label and the judge were never in conflict: one
+says "not this question's rule", the other says "and not false either". My sentence was an inference
+from n=1, written down in the voice of a class-level finding, and it survived into a public commit
+because the one case I looked at was vivid and the audit was not.
+
+**What it cost.** The wrong sentence is in history and stays there — `286890b` is public, and corrections
+go forward rather than backward.
+
+**What it taught.** Two things, and the second is the one worth keeping. A conclusion that came from one
+case must either say "one case" in the sentence or wait for the count; the audit takes minutes and runs
+offline, and it changed the answer completely. And when the fix is *meaning*, put the measurement in the
+tool rather than in the prose that explains the tool: the report now recomputes and prints the off-scope
+count every run, and a test locks the four colliding case ids so that anyone who later "fixes" a label
+to silence a disagreement trips a failure instead of quietly winning an argument. I13 was arithmetic
+published as measurement; this is inference published as measurement, same failure, smarter clothes — and
+the felt confidence was identical both times, which is the actual reason to audit before writing.
+
 ## What the briefs said
 
 A child receives no chat history — only the brief, the repo, and its own reading. Briefs in this build

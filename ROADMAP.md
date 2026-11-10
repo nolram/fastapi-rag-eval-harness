@@ -440,9 +440,13 @@ differences are the point:
 4. **Prompt gap**: §3's tree omits `eval/calibration/`, but §6 requires `eval/calibration/labels.csv`
    → I'll add the directory (noted as divergence). §9 is truncated mid-sentence and §10 is missing.
 5. **Repo name/visibility**: `nolram/fastapi-rag-eval-harness`, public — confirm.
-6. **`n-018`'s `must_not_include` is disputed by the judge and the corpus** (Stage 11, open).
-   `at most 3 retries` is forbidden in the answer, but `idempotency#3` — third of the five chunks the
-   query retrieves — states *"Use at most 3 retries and reuse the same key for every attempt."* The
-   label appears to forbid a true sentence. Not edited: re-labelling because a model disagreed is how a
-   golden set becomes a mirror. **Needs a human decision**, and it is the reason the breach-calibration
-   denominator is one case and suspect.
+6. **`n-018`'s `must_not_include` — RESOLVED, and resolved against my own first reading.**
+   The judge defended a sentence the label forbids, and my Stage 11 note called the label "probably a
+   bug". Audited across the dataset: 10 of the 18 `normal` cases carry a prohibition, and in 4 of them
+   (`n-007`, `n-009`, `n-010`, `n-018`) the forbidden string sits in a chunk retrieval offers for that
+   query and in none of the expected chunks — always that shape. The label is a guard against retrieval
+   noise ("not this question's rule"), not a falsity claim. **Operator decision: keep all 30 labels and
+   fix the semantics in the report.** The fix went into the harness, not into prose: the report now
+   computes and states the off-scope count every run, the calibration check is named
+   `human says off-scope import vs judge supported=false`, and a test locks the four colliding ids so a
+   future relabel that erases the collision fails loudly.
