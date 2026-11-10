@@ -64,6 +64,16 @@ jobs:
         if: always()
         run: make eval-retrieval
 
+      # The generation eval is present and SKIPS, and that is the assertion. There is no
+      # `secrets.` reference anywhere in this file by design, so this step can never hold a key:
+      # with LLM_API_KEY unset the module prints one line, writes no report, and exits 0. If the
+      # skip path ever regressed into a crash or a network attempt, this step is where it shows up.
+      # Do not add a secret to "make it do something" -- a run here would also make the numbers
+      # depend on a provider this job is not allowed to reach.
+      - name: make eval-generation (no key available: must skip cleanly with exit 0)
+        if: always()
+        run: make eval-generation
+
       # Guards the drift this repo actually committed: the README states the
       # test count in prose, and the suite grew 67 -> 70 with nothing noticing.
       - name: Docs consistency (README test count vs pytest collection)
