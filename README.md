@@ -247,7 +247,7 @@ eval/
 AGENT.md             the working agreement for agents working in this repo
 .github/workflows/   CI: make check, make eval-retrieval, a README-consistency check, report upload
 ROADMAP.md           stage-by-stage plan, decisions recorded as they were made
-docs/agent-dossier.md  fourteen agent runs, thirteen incidents, and what each one cost
+docs/agent-dossier.md  fourteen agent runs, fourteen incidents, and what each one cost
 ```
 
 Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` covers `src/`.

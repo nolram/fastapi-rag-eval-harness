@@ -292,6 +292,25 @@ carries the same lesson in a harder form: because every 4-decimal figure in it m
 `eval/report.md`, the sentence "Recall moved 0.0556" was rejected by the rule and rewritten as one case
 in eighteen — the arithmetic became unquotable, so it had to become a fact instead.
 
+### I14 — a check that passed because it ran nothing
+
+**What happened.** To prove the CI steps still pass, I extracted the workflow's embedded docs-check
+script into a temp file and ran it. It exited `0`. It had also printed nothing, because my extraction
+had written an **empty file** — `write()` was handed a list of lines where it wanted a string, the
+exception happened in the writer process, and the runner happily executed an empty script a moment
+later. Two commands, one of which was the thing under test, and the success was pure absence.
+
+**What it taught.** A green exit code from an artifact I assembled myself is not evidence until I have
+seen the artifact *do something*. The cost of the fix is one line — assert the thing is non-empty, or
+tee its real output — and it is the same reason `make eval-retrieval` prints the bucket rows instead of
+only exiting nonzero, and why the gates read numbers off the report rather than trusting the caller. The
+empty-script failure is the general form of every "the test passed" that means "the test ran". A check
+needs a line it can only print when it has actually looked.
+
+**Evidence.** `gh` 404s on `runs/{id}/artifacts` and `--log` with the commit token, so the artifact
+comparison this stage wanted was never made; `ROADMAP.md`, Stage 8.5 narrows the cross-machine claim to
+what `gh run list` actually supports.
+
 ## What the briefs said
 
 A child receives no chat history — only the brief, the repo, and its own reading. Briefs in this build

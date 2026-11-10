@@ -288,6 +288,15 @@ Deferred by the operator at Stage 8, recorded here so it was not lost, executed 
   reworded: the `curl` block in `README.md` (the pasted score moved from `13.20236738298299` to
   `10.622093619866167` because the analyser changed under it), the README badges, the `pytest` count the
   CI docs-check compares, and the abstention bands in `AGENT.md` and `eval/README.md`.
+- CI on the first green commit: run `42739925820`, **`completed success`, 39 s** — the first passing
+  run on `main` in this repo's history. What that run does **not** re-prove: the cross-machine
+  byte-identity of `eval/report.md` on GitHub's runner. The Stage 9 proof checked the uploaded artifact
+  against the local file, and this time `gh api …/actions/runs/{id}/artifacts`, `gh run view --log` and
+  the anonymous web page all returned 404 (the commit's token can list runs but not read them), so no
+  artifact was downloaded and **no byte comparison was made**. `gh run list` reporting `success` is real
+  evidence that the gates cleared on a second machine; it is not evidence that the exact five decimals
+  matched there. The claim is narrowed to exactly that, and the Stage 9 proof stands for the pre-8.5
+  numbers only.
 
 ## Stage 9 — CI
 
