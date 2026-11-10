@@ -1,9 +1,10 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–11 complete, plus Stage 8.5** (bootstrap, corpus, chunker, BM25 retrieval,
+**Status: Stages 0–12 complete, plus Stage 8.5** (bootstrap, corpus, chunker, BM25 retrieval,
 `golden.jsonl`, metrics, retrieval eval harness, README + agent dossier, quality gates, CI, AGENT.md,
-the FastAPI service, one honest retriever tuning pass, the LLM-as-judge generation eval). Stage 12
-(ADRs + study guide + README finalisation) is next. **`make check` has been green since Stage 8.5** —
+the FastAPI service, one honest retriever tuning pass, the LLM-as-judge generation eval, and the three
+ADRs + study guide). Stage 13 (acceptance run + final report) is next. **`make check` has been green since
+Stage 8.5** —
 the two Stage 8 gates failed on purpose from Stage 8 until the one-variable tuning pass made them
 pass by fixing a real defect, not by moving them.
 Implementation was delegated stage-by-stage to subagents and reviewed by the parent before committing;
@@ -384,19 +385,34 @@ differences are the point:
   tripwire, and by CI, which runs `make eval-generation` on every push with no secret available.
 - Commit: `eval: llm-as-judge generation eval, measurement only`
 
-## Stage 12 — ADRs, study guide, README (with real numbers only)
+## Stage 12 — ADRs, study guide, README (with real numbers only) — **complete**
 
-- `docs/adr/0001-separate-retrieval-and-generation-evals.md`,
-  `0002-manual-golden-dataset-before-llm-judge.md`, `0003-evals-live-in-the-repo.md`.
-- `docs/study-guide.md`: 7 exercises (the 6 from §8 + the "audit an agent against AGENT.md" one),
-  each with **what to expect**.
-- `README.md` in the required order: 3-sentence what/why → quickstart + `curl` → **"The one idea"**
-  (cost/frequency/reproducibility table) → **Current numbers (as of <date>)** pasted verbatim from
-  Stage 6/13 output with the *"30 hand-labelled cases … regression detection on a toy corpus, not a
-  quality claim"* warning → how to run generation eval → pointer to `AGENT.md` + `study-guide` →
-  honest limitations.
-- Gate: no number in README that isn't in `eval/report.md`.
-- Commit: `docs: ADRs, study guide and README`
+Planned and built as specified, with one divergence in provenance rather than in content:
+
+| planned | built | why it differs |
+| --- | --- | --- |
+| 7 exercises: "the 6 from §8" + "audit an agent against `AGENT.md`" | 7 exercises, defined here | §8 of the source prompt was never recorded in this repo, so its six exercises existed only as a count. The ROADMAP's one surviving hint — that `--k` overrides uniformly, exercise 3 — is honoured. The set was written from the repo's own measured behaviour, which is the honest substitute for a list that was never committed. |
+| ADRs and guide delegated to children | ADRs by a child that timed out after delivering them; guide **written by the parent after its child died at the ceiling with zero bytes** | I22. Two children, one shared 30-minute ceiling. |
+| README finalisation | 6 corrections, 3 of them **false statements** | "Both targets currently exit non-zero on `main`" and "the retriever misses the gates" had been stale since Stage 8.5, and `2 failed, 86 passed` had been stale since Stage 8. Both were true when written. I19 again, in the file that carries the numbers. |
+
+`docs/adr/` — 0001 (why two harnesses with opposite gating contracts), 0002 (why the labels came first and
+why they are frozen), 0003 (why the evals live in-tree and what that costs: `eval/` is linted and **not**
+type-checked). Each carries a **Borne** section listing what the decision costs, because a decision record
+without costs is marketing. 0003 also caught a rotted claim in `AGENT.md` (I24), now fixed by quoting
+commands instead of their output.
+
+`docs/study-guide.md` — 7 exercises, each with Read / Do / What to expect / The trap it teaches. Every
+expected output was produced by running the command, including the one where a corpus rename makes both
+gates go **up** — `0.8333` to `0.8889` recall and `0.7269` to `0.7824` MRR over `normal`, while the
+documentation gets factually wrong. Those two figures are the only numbers this stage quotes that no
+committed artefact contains: they are reproducible by the `sed` in exercise 2 and were reverted with
+`git checkout -- src/lumen/corpus/`, which is precisely why the exercise is in the guide instead of the
+figures being trusted here.
+
+**Gate result:** no figure in the README that cannot be traced to a committed artefact. The one 4-decimal
+figure that does not appear in `eval/report.md` is `10.6220`, and it is an artefact of the checking regex —
+the first seven characters of `10.622093619866167`, a real `/search` score under `## The API`, reproducible
+exactly by `retrieve('how many requests per minute', k=1)`. Study-guide exercise 7 is that investigation.
 
 ## Stage 13 — Acceptance run + final report (§9/§11)
 

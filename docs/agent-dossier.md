@@ -49,8 +49,12 @@ Durations are the harness-recorded wall-clock of each child run, read from its `
 | 14 | 8.5 — suffix folding | `ddbd720d` | **30 m 00 s** | **timed out mid-edit; parent finished the work** |
 | 15 | 11 — generation eval | `e416c7ba` | **30 m 00 s** | **timed out; module complete (1077 lines, live-tested), its tests unwritten** |
 | 16 | 11 — generation tests | `ed2fccac` | **30 m 00 s** | **timed out; 44 tests landed, 6 of the 10 briefed areas unwritten; parent finished** |
+| 17 | 12 — three ADRs | `ce5ed871` | **30 m 00 s** | **timed out at the ceiling having written all three files (452 lines); the handoff was never produced** |
+| 18 | 12 — study guide | `e634e439` | **30 m 00 s** | **killed at teardown when the mission ceiling expired; zero bytes written; parent wrote the guide** |
 
-**Total delegated time: 5 h 1 m. Of that, 150 m — 50% — went into five runs that timed out.** The single
+**Total delegated time: 6 h 1 m. Of that, 210 m — 58.2% — went into seven runs that timed out**
+(`python3 -c 'print(361-301, 210/361)'` after adding the two Stage 12 ceilings to the 5 h 1 m that stood
+here before). The single
 fastest child in the build (6 m 45 s) did its job on the first try, and it is the one
 whose brief named exactly one file it was allowed to write. Stage 8 was written to that same rule — one
 file, one marker, expected-red — and cleared in one attempt.
@@ -457,6 +461,86 @@ count every run, and a test locks the four colliding case ids so that anyone who
 to silence a disagreement trips a failure instead of quietly winning an argument. I13 was arithmetic
 published as measurement; this is inference published as measurement, same failure, smarter clothes — and
 the felt confidence was identical both times, which is the actual reason to audit before writing.
+
+### I22 — one 30-minute ceiling executed two children, and the difference between them was file count
+
+**What happened.** Stage 12 launched as one parallel mission of two children with disjoint write targets:
+one writing three ADRs (budget 520 lines), one writing the study guide (budget 460 lines). Both briefs
+carried every clause the dossier had produced by then — a budgeted READ FIRST, settled design decisions,
+a VALIDATION block whose literal output had to be pasted back, one write target each, and *priority order
+inside the file* so a death mid-run leaves something usable. Both hit the ceiling. Run 17 (`ce5ed871`) wrote
+all three ADRs and died before writing its handoff; run 18 (`e634e439`) wrote nothing at all.
+
+Its `*_meta.json` does not even record the same death: run 17 says `Subagent timed out after 1798696ms`,
+run 18 says `Subagent stopped.` — killed at teardown, when the mission's own 1800-second ceiling expired.
+A fan-out is one mission with one ceiling, so one child's overrun is the other child's execution. That was
+not in my head when I wrote the briefs, and it is not visible in the tool: I asked for two independent
+workers and got two children sharing a noose.
+
+The difference between the two outcomes is the part worth keeping. Three small files forced run 17 to
+interleave — write 0001, grep its claims, write 0002 — so it had 452 verified lines banked when it died.
+One large file let run 18 read first and write last; at 30:00 it had read a great deal of the repo and
+produced zero bytes. Priority order inside a file rescues a child with several files and is worthless to a
+child with only one.
+
+**What it cost.** 60 m, taking the build to 210 m of 361 m spent on ceilings. The parent wrote the guide,
+which is where I23 comes from.
+
+**What it taught.** Prose with verification is not lighter than code. The Stage 11 budgeting rule — roughly
+1000 reviewed lines per 30-minute child — applied to *documentation* just as it had to modules, and Stage 12
+asked one child for ~900 lines of prose whose every claim had a grep attached. Split by section, not by
+file: two children each writing half a guide would have banked four exercises. And when fanning out, say
+what happens to the sibling: with a shared ceiling, `parallel` is not isolation.
+
+### I23 — four of my incident citations in the study guide pointed at the wrong incidents
+
+**What happened.** Writing the guide myself, I attributed incidents to exercises from memory of the
+dossier's *content* rather than from its index. Exercise 1 cited I2 (a timed-out child left the build red)
+for a vocabulary failure. Exercise 2 cited I16 (the judge template died on its first real call) for
+Goodhart. Exercise 4 cited I17 (two more single-file briefs, two more 30-minute ceilings) for the
+threshold sweep. Exercise 7 cited I14 for a false positive my own regex had invented. All four sentences
+read fluently; all four were wrong, and wrong in the way that matters most in this repo — each pointed a
+reader at an incident that does not contain the lesson being claimed.
+
+Caught only because I eventually ran `grep -n '^### I' docs/agent-dossier.md` and read the bodies I was
+citing. Two further instrument errors surfaced in the same pass: the `sed` range in exercise 4 never
+matched, because the real heading wraps its phrase in backticks and my pattern did not; and the
+README-number check in exercise 7 reported a violation that
+did not exist, because `grep -oE '[0-9]+\.[0-9]{4}'` chopped a 17-digit float out of a real `/search`
+response into a 4-decimal figure that was never a figure. I wrote both commands into the guide before
+running them, and the third command in the same file — the one I ran first — is the only reason they were
+caught.
+
+**What it cost.** Nothing public: all three defects were found before commit, by executing what I had
+written. The real cost is the pattern, which is now four stages deep and shows no sign of stopping.
+
+**What it taught.** The guide's own standard — every expected output produced by execution — has to be
+applied to *citations*, not just to numbers. A citation is a claim about a document, and a claim about a
+document is verified by reading that document, not by remembering it. My memory of this dossier was
+confident, fluent and wrong four times out of four attempts at attribution, which is the I13 result
+reproduced on prose instead of arithmetic: derived claims feel more trustworthy than fetched ones, and
+that feeling is exactly where the defect lives.
+
+### I24 — a child caught a rotted claim in `AGENT.md`, and CI could not see it either
+
+**What happened.** The Stage 12 ADR brief asked its child to check one specific thing before asserting it:
+which directory `make typecheck` covers. It reported honestly that `eval/` is linted but not type-checked —
+and, in passing, that `AGENT.md` §3 was wrong. That section pasted the output of its own import-direction
+grep: three `path:line:` pairs, true the day Stage 10 wrote them. Stage 11 added
+`tests/test_generation_eval.py`; the command's real output became eight lines; the file went on asserting
+three for two stages, and neither `make check` nor CI has any way to see it.
+
+It is the most embarrassing find in the build. `AGENT.md` exists to stop agents quoting state they did not
+measure, and it broke that rule about itself — I7 and I19, in the file whose purpose is preventing them. I
+fixed the section by replacing the transcript with two commands whose output is stable (`grep` over `src/`
+alone, which is the actual rule, and a sorted list of file names) and by writing a paragraph explaining why
+a transcript was the wrong artefact to paste there.
+
+**What it taught.** Verification greps written into a brief convert a child from a writer into a checker of
+the parent's work, and they are cheap: the instruction was one sentence, and it found something two stages
+and two green CI runs had missed. It also names the bar for anything pasted into an agreement: either the
+command's output is stable across the changes the repo will plausibly make, or the command goes in and the
+output stays out.
 
 ## What the briefs said
 
