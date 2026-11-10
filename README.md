@@ -11,12 +11,18 @@ Every number below comes from a real `make eval-retrieval` run on this commit.
 There are two studies in this repo, and they are about different things. The code studies **how to keep
 an LLM system honest** — a hand-labelled dataset, a deterministic judge, gates that are allowed to fail.
 [`docs/agent-dossier.md`](docs/agent-dossier.md) studies **what it is like to have LLM agents build
-it** — fourteen delegated runs, three of them timed out, a build left red for five stages, and the audit
+it** — sixteen delegated runs, five of them timed out, a build left red for five stages, and the audit
 that caught this README citing a number the report did not contain.
 
 > **30 hand-labelled cases on a 12-document toy corpus are for regression detection, not a quality
 > claim.** A Recall@5 of 0.83 here means *"this harness can see a regression"*, not *"the product is
 > 83% good"*. Anyone quoting these numbers as product quality is misusing this repo.
+
+Three ways in: **the code**, from the Quickstart down; **the measurement**, in
+[`eval/README.md`](eval/README.md) and [`docs/adr/`](docs/adr/); **the process**, in
+[`AGENT.md`](AGENT.md), [`docs/agent-dossier.md`](docs/agent-dossier.md) and
+[`docs/study-guide.md`](docs/study-guide.md) — seven exercises, each with an expected output someone
+actually ran.
 
 ## Status: what is built, what is planned
 
@@ -24,8 +30,8 @@ This repo is being built in public, stage by stage; [`ROADMAP.md`](ROADMAP.md) i
 
 | | |
 | --- | --- |
-| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` · **FastAPI `/search` + `/ask`** · **retriever tuning (Stage 8.5)** · **LLM-as-judge generation eval (Stage 11)** |
-| 🔜 Planned | ADRs + study guide (Stage 12) |
+| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` · **FastAPI `/search` + `/ask`** · **retriever tuning (Stage 8.5)** · **LLM-as-judge generation eval (Stage 11)** · **ADRs + study guide (Stage 12)** |
+| 🔜 Planned | acceptance run + final report (Stage 13) |
 
 CI runs `make check`, `make eval-retrieval`, a README-consistency check and an upload of
 `eval/report.md`, all under `if: always()` so one run reports every failing signal instead of stopping at
@@ -79,7 +85,7 @@ are doing on purpose:
 **No endpoint can make a paid call by accident.** With no `LLM_API_KEY`, `generation.answer()`
 short-circuits before any network access; the live path is one plain `httpx` POST with
 `temperature=0`, and the suite proves the key never reaches a `repr()` or an error message. The whole
-suite was also re-run with `LLM_API_KEY` set to a fake value: still `2 failed, 86 passed`, so no test
+suite was also re-run with `LLM_API_KEY` set to a fake value: still `143 passed`, so no test
 makes a real request or depends on one.
 
 ## Quickstart
@@ -91,9 +97,10 @@ make eval-retrieval   # scores eval/golden.jsonl, rewrites eval/report.md, gates
 make eval-generation  # with no LLM_API_KEY this prints one skip line and exits 0 — CI has no key
 ```
 
-**Both targets currently exit non-zero on `main`**, and that is the intended state of this commit: the
-retriever misses the Recall@5 and MRR gates, so `make check` fails on two assertions and
-`make eval-retrieval` fails on two gates. See [Current numbers](#current-numbers-as-of-2026-11-09).
+**Both targets exit `0` on `main` now**, and the way to read that is the history behind it: they exited
+non-zero for five stages, because the retriever missed the Recall@5 and MRR gates and nobody lowered the
+bar. Stage 8.5 closed the gap by changing the analyser and nothing else. See
+[Current numbers](#current-numbers-as-of-2026-11-10).
 
 The same thing without `make`, which is what you want when you care about the exit code:
 
@@ -126,7 +133,7 @@ The asymmetry is the point: the cheap deterministic judge carries the regression
 probabilistic expensive judge never has to be trusted with a merge. `eval/metrics.py` and
 `eval/golden.jsonl` are read-only by convention — see [Discipline](#discipline).
 
-## Current numbers (as of 2026-11-09)
+## Current numbers (as of 2026-11-10)
 
 Verbatim from [`eval/report.md`](eval/report.md), produced by the command in the quickstart above
 against 12 documents / 64 chunks and 30 cases (18 `normal`, 6 `ambiguous`, 6 `abstention`).
@@ -259,11 +266,17 @@ eval/
   retrieval_eval.py  the CLI: validate -> score -> aggregate per bucket -> gate
   report.py          renders the markdown; no computation
   report.md          the generated report (committed, so the numbers are reviewable in a diff)
+  generation_eval.py the generation harness: answer every case, measure, judge; gates on nothing
+  generation_report.md the last live run, committed as a record of one run at one endpoint
   README.md          how to read the report, and why each column is there
 AGENT.md             the working agreement for agents working in this repo
 .github/workflows/   CI: make check, make eval-retrieval, a README-consistency check, report upload
 ROADMAP.md           stage-by-stage plan, decisions recorded as they were made
-docs/agent-dossier.md  fourteen agent runs, fourteen incidents, and what each one cost
+docs/adr/            three architecture decision records: why the harnesses are split, why the
+                     labels came first, why the evals live in-tree
+docs/study-guide.md  seven exercises with executed expected-output, including one that breaks this
+                     repo's own metric in ten minutes
+docs/agent-dossier.md  sixteen agent runs, twenty-one incidents, and what each one cost
 ```
 
 Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` covers `src/`.
@@ -296,6 +309,10 @@ Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` c
   one day. Two things cap how far its numbers reach: the judge is the answering model itself unless
   `LLM_JUDGE_MODEL` says otherwise, and the calibration denominators are hand-carved out of 30 cases —
   six labelled `should_abstain`, and only the answers that actually broke a stated prohibition.
-- **The study guide and the ADRs are still to come** (Stage 12). They will be linked from here when
-  they exist. [`AGENT.md`](AGENT.md) exists now, and its own §8 lists what it cannot enforce — read that
-  section before treating it as a guarantee.
+- **The ADRs and the study guide exist, and they are not a guarantee either.**
+  [`docs/adr/`](docs/adr/) records three decisions with their costs; [`docs/study-guide.md`](docs/study-guide.md)
+  is seven exercises whose expected outputs were produced by running the commands. Both are prose, and
+  prose about current state has a half-life — the dossier's I19 is this repo's name for that. What is
+  enforced is in `.github/workflows/ci.yml`, and it is much less than what is written: only the README's
+  test count is compared mechanically. [`AGENT.md`](AGENT.md) exists too, and its own §8 lists what it
+  cannot enforce — read that section before treating it as a guarantee.
