@@ -70,7 +70,7 @@ jobs:
       # skip path ever regressed into a crash or a network attempt, this step is where it shows up.
       # Do not add a secret to "make it do something" -- a run here would also make the numbers
       # depend on a provider this job is not allowed to reach.
-      - name: make eval-generation (no key available: must skip cleanly with exit 0)
+      - name: make eval-generation (no key, so it must skip with exit 0)
         if: always()
         run: make eval-generation
 
