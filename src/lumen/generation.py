@@ -24,7 +24,14 @@ from lumen.config import Settings
 from lumen.schemas import GenerationMode
 
 # A generous ceiling for one non-streaming completion; a hang must not outlive the request.
-REQUEST_TIMEOUT_SECONDS = 20.0
+# Measured, not guessed, and the measurement is the argument. The original value was 20.0 and the
+# first live 30-case run lost 20 of its 30 answers to that ceiling. Latency of the same prompts,
+# uncapped, on a 10-case sample: min 3.8s, median 35.2s, mean 47.4s, p80 76.0s, max 134.7s — the
+# endpoint is a reasoning model, and one case spent 5515 completion tokens thinking about a rate
+# limit. 20.0s truncated 6 of those 10. 120.0s truncates none of them and is still a ceiling a
+# caller can plan around; anything much longer is a job queue rather than a request, and a caller
+# blocking on `/ask` for minutes is a design change this repo documents instead of making.
+REQUEST_TIMEOUT_SECONDS = 120.0
 
 # Shown verbatim when stub mode abstains, so the response explains its own state.
 STUB_ANSWER = (
