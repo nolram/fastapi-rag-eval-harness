@@ -10,6 +10,13 @@ pass by fixing a real defect, not by moving them.
 Implementation was delegated stage-by-stage to subagents and reviewed by the parent before committing;
 each stage's gate is recorded below.
 
+**The build is complete. The objective is not met.** Stages 0–13 produced a well-evaluated toy system and a
+26-incident diary; the objective stated at the start was to understand **good practices for using LLMs in
+day-to-day software development**. Those artefacts contain the raw material for that understanding and do
+not contain the understanding. Stages 14–16 exist to close that gap or to say plainly that it cannot be
+closed here. The gap itself is documented below, because a plan that does not record why it changed is a
+plan that will change again for the same reason.
+
 Recorded decisions so far that later stages must respect:
 - Chunk ids are 1-based per document (`rate_limits#1` = first `##`); `doc_id` keeps the `.md` suffix.
 - All 30 golden cases use `k: 5`; the CLI `--k` overrides uniformly (study-guide exercise 3).
@@ -464,11 +471,161 @@ must name the command that produced it.
 
 ---
 
+## The objective gap — why Stages 14–16 exist
+
+**What was asked for:** a senior-level exercise whose subject was how to work well with LLM agents in
+ordinary engineering work.
+
+**What was built:** a deterministic retrieval eval, a gated CI, a service, and a chronological incident log.
+Good artefacts. Neither is the thing asked for: the log is organised by *when the defect happened*, and what
+the objective needs is organisation by *what to do next time*. A reader who wants "how do I run an agent on a
+task on Tuesday" finds `I1 … I26` in discovery order and no prescriptions.
+
+**Where the plan, not the execution, failed.** Every gate in this ROADMAP is per-stage — *`make check` green*,
+*gates FAIL by design*, *no number without provenance* — and not one is per-learning. The plan measured the
+build thoroughly and the objective not at all. That is why thirteen stages could pass every gate and still
+miss the target, and it is the single most transferable defect in the file: **an agent will satisfy the
+acceptance criteria you wrote, so the acceptance criteria are the whole job.** Adding Stages 14–16 with no
+gate that could detect this failure again would be repeating it.
+
+**Measured facts the remaining stages must respect.** Computed from the ledger in
+`docs/agent-dossier.md` — every row is a real run with a measured wall-clock time:
+
+```console
+$ python3 - <<'PY'
+import re
+rows=[(int(m.group(1)), int(m.group(4))+int(m.group(5))/60, 'timed out' in l or 'teardown' in l)
+      for l in open('docs/agent-dossier.md') if (m:=re.match(r'^\| (\d+) \| (.+?) \| `([0-9a-f]{8})` \| \*?\*?(\d+) m (\d+) s', l))]
+for name,lo,hi in [('runs 1-6 (Stages 0-5)',1,6),('runs 7-13 (Stages 6-10)',7,13),('runs 14-19 (Stages 8.5-13)',14,19)]:
+    b=[r for r in rows if lo<=r[0]<=hi]; print(f"{name:30} runs={len(b)} avg={sum(r[1] for r in b)/len(b):.1f}m ceilings={sum(1 for r in b if r[2])}")
+PY
+runs 1-6 (Stages 0-5)          runs=6 avg=13.6m ceilings=0
+runs 7-13 (Stages 6-10)        runs=7 avg=18.6m ceilings=2
+runs 14-19 (Stages 8.5-13)     runs=6 avg=30.0m ceilings=6
+```
+
+Six of six delegated runs completed before Stage 6 closed. **Zero of six completed after Stage 8.5**, and
+those last six were briefed with the most discipline in the series: one write target each, pre-set design
+decisions, priority ordering inside the file, an explicit validation block. The lever stopped being brief
+quality around Stage 8 and became **orientation cost against a fixed ceiling** — reading the repo and
+re-validating against a growing suite, which is work, not overhead.
+
+That is a measurement, not a conclusion: n = 19, one model on both sides of every exchange, one operator,
+and **no control arm**. It supports a rule of thumb. It cannot support "agents did not help", because the
+repo never measured a build done without them.
+
+## Stage 14 — Distil the practices (**A** — the artefact the objective asked for)
+
+`docs/practices.md`, roughly 250–400 lines, 7–9 practices. **Written by the parent, not delegated**, and
+that choice is itself evidence: it is judgment over thirteen stages of material only the parent read, and
+the table above predicts a child would spend the ceiling reading. If the practices turn out to be true,
+this decision should be explicable using them.
+
+Structure per practice — *the rule* (one imperative sentence) · *when it applies* · *the evidence here*
+(a commit hash, a command and what it prints, or a ledger row) · *the counter-example from this build* ·
+*what obeying it costs*. No section without a cost is marketing and does not ship.
+
+**Entry criterion, enforced by the gate below:** a practice that cannot point to a commit, a command output,
+or a ledger row does not enter the file. The rule exists specifically to exclude "my opinion, formatted".
+
+Candidates already paid for by the build:
+
+| practice | the evidence, already in the repo |
+| --- | --- |
+| Delegate inside the orientation window, not inside the difficulty window | the block table above; runs 9 and 13 (6 m 45 s, and 28 m 34 s — 86 s from death) |
+| A death sentence requires a measurement | I25: mtime 14:37:52 against terminal 14:42:59, and my own rule I did not run |
+| A ceiling is a scheduling constraint, not an emergency | I17, I22, I25 — 240 m of 391 m; `parallel` shares one ceiling (I22) |
+| Digits in prose need a mechanism; otherwise state a shape or a command | I26, `AGENT.md` §7, and the two counts this stage had to correct |
+| Freeze the labels, tune the system | `git log --oneline -- eval/golden.jsonl` is one line; five stages of red preserved |
+| Scope a gate to the bucket it judges | `--min-recall` on `normal` only; the blended 30-case number moves when the dataset is edited |
+| Review budget is real and small | I23: four fluent, wrong incident citations in one draft I had just written |
+| Put a verification grep in the brief and the child becomes a checker | I24: one sentence found a defect two green CI runs missed |
+| Write the learning gate, not only the build gate | this section, written thirteen stages late |
+
+**Gate.** Every commit hash cited in `docs/practices.md` resolves (`git cat-file -e <hash>`) — the one-liner
+is printed in the file itself. Every number is either produced by a command in the same file or is a pointer
+to an artefact that owns it; no number is restated. `make check` unaffected (no code changes). `README.md`
+gains a pointer, and the study guide gains a cross-reference rather than a copy. Read the file once in full
+after writing it: four of my last batch of citations were wrong, and that error class is citation-shaped.
+
+**Out of scope, deliberately:** new code, new corpus documents, new golden cases, new evals. Stage 14 adds
+no mechanism. Volume is not the thesis; adding cases to a frozen 30 would weaken the one non-renewable
+asset in this repo.
+
+Commit: `docs: the practices, distilled from twenty-six incidents`
+
+## Stage 15 — The baseline experiment (**B** — mapped, not scheduled)
+
+The only item that turns the dossier from descriptive to comparative. It cannot be skipped *silently*: the
+question "did delegating help?" is unanswerable here as built, because there is no control arm.
+
+**Question:** on a real day-to-day engineering task, at equal acceptance criteria, does agent delegation
+beat non-delegation — and if it loses, where?
+
+**Pre-registered design** (fixed before either arm runs, because a criterion invented afterwards is a
+verdict with extra steps): one real task from the operator's actual work, 150–400 lines of expected change,
+self-contained, no new dependencies · acceptance criteria written down first, by the operator, without
+consulting the parent · two arms — parent writing alone, and parent delegating — on the same task type, same
+session length · metrics recorded *at the time*: wall clock, review interventions needed, defects found
+after "done", lines changed · one model in both arms, so the comparison is about delegation and not about
+the model · order not chosen for convenience.
+
+**The failure mode named in advance:** if the task is invented or resized to suit delegation, the result is
+worthless — this is study-guide exercise 2's Goodhart shape wearing a lab coat. The corpus rename that made
+both gates go up while the documentation got wrong is the same error as choosing an experiment that cannot
+lose. If no real task is available, the honest outcome is *not run*, and Stage 16 says so.
+
+Cost: roughly one day, and it needs the operator to supply both the task and the day. That dependency is
+why this is mapped rather than scheduled.
+
+Commit: `docs: a measured comparison, with its criteria fixed in advance`
+
+## Stage 16 — Archive with the learnings (terminal stage)
+
+**Trigger:** Stage 14 is done, and either Stage 15 was not run or its result does not earn a claim.
+
+Archiving here is not deletion. The ledger is the only non-renewable asset in this repo — no. 19 runs with
+honest timings cannot be recreated without redoing the build — so everything stays public and read-only.
+
+- A banner at the top of `README.md`: what this repo is, what it is not, and that the primary reading is
+  `docs/practices.md`, not the code.
+- Reorder the README so **thesis B leads**: how the work was done is the more original subject, and the toy
+  RAG is the instrument that made it observable.
+- Final ROADMAP line: the objective restated, and met / partially met / not met, with the reason in one
+  sentence.
+- Closing dossier entry: the last stage's cost, including the cost of the plan itself changing.
+
+Commit: `docs: archive — what was learned, what was measured, what was never measured`
+
+### Definition of done for the whole effort
+
+This is the gate the first thirteen stages lacked. A reader with no memory of the build, one hour, opening
+at the README, can answer:
+
+1. Which three practices would they change in how they work with agents — and where is the evidence?
+2. Which claims in this repo are **unmeasured**, and do they trust those less?
+3. How to reproduce any number they disagree with.
+
+If Stage 14 cannot produce that outcome, the objective was not met, and Stage 16 says so in one sentence
+rather than implying it. Archiving honestly is a passing grade; dressing it up is not.
+
+## Standing rules added at the pivot
+
+- No stage adds corpus documents or golden cases. The labels' value is that they are frozen and small.
+- Default writer is the parent. Delegate only inside the orientation window, and state the ceiling in the
+  brief as a scheduling constraint.
+- Every new stage names the gate that would show the *objective* advanced — not only the build.
+- A plan change is recorded as a section with its reason, never as a silent edit of the sections above.
+
+---
+
 ## Commit sequence (logical, no mega-commit)
 
 `chore: bootstrap` → `feat: corpus` → `feat: chunker` → `feat: BM25` → `eval: golden dataset` →
 `eval: metrics` → `eval: retrieval harness` → `feat: fastapi` → `test: gates` → `ci:` →
-`docs: AGENT.md` → `eval: generation judge` → `docs: adr/study-guide/readme`
+`docs: AGENT.md` → `eval: generation judge` → `docs: adr/study-guide/readme` → `test: CI workflow guard` →
+`docs: acceptance run` → … → **`docs: the practices, distilled` → `docs: a measured comparison` (if run) →
+`docs: archive`**
 
 ## Standing rules carried across all stages
 
@@ -476,6 +633,10 @@ must name the command that produced it.
 - No paid LLM call from tests or `make check`.
 - Never edit `golden.jsonl`, `metrics.py`, or test thresholds to make a check pass.
 - Code and docs in English.
+- Every derived number states the command that computes it. A "derivation" whose command prints something
+  else is I26 and does not ship.
+- A stage's gate must be able to detect the objective failing, not only the build failing. Stages 0–13
+  could not pass this test; that is the reason Stages 14–16 exist.
 
 ## Open questions (answer before Stage 0/1 to avoid rework)
 
