@@ -16,7 +16,7 @@ Computed from the answer text and the labels alone, with no judge involved.
 
 | bucket | cases | must_include coverage | abstention match | context offered | context cited |
 | --- | --- | --- | --- | --- | --- |
-| normal | 18 | 0.7500 (18/18) | 0.8889 (18/18) | 5.0000 (18/18) | 1.1667 (18/18) |
+| normal | 18 | 0.7222 (18/18) | 0.8889 (18/18) | 5.0000 (18/18) | 1.2222 (18/18) |
 | ambiguous | 6 | n/a (0/6) | 1.0000 (6/6) | 5.0000 (6/6) | 2.0000 (6/6) |
 | abstention | 6 | n/a (0/6) | 1.0000 (6/6) | 5.0000 (6/6) | 0.0000 (6/6) |
 
@@ -25,7 +25,7 @@ Computed from the answer text and the labels alone, with no judge involved.
 - **`answer_cites_nothing` — the "looks grounded, is not" detector.** A non-abstaining answer that names no chunk id. Per bucket: normal 0 · ambiguous 0 · abstention 0.
 - **`cited_but_not_retrieved`** — a cited chunk id retrieval never offered. Per bucket: normal 0 · ambiguous 0 · abstention 0. This is `0` today by construction, because `lumen.generation` extracts citations from the retrieved list only; it is reported anyway, as the tripwire for the day citation extraction gets smarter than that.
 - **`context offered` vs `context cited`** — the mean number of chunk ids retrieval put in front of the answerer against the mean number the answer actually named; the gap is how much offered context went unused.
-- Cases outside a mean: `normal`: answer errors 0, judge errors 0; `ambiguous`: answer errors 0, judge errors 0; `abstention`: answer errors 0, judge errors 0. A provider failure on one case is a hole in the measurement, not a crash: the case is named here and leaves every denominator that needs answer text.
+- Cases outside a mean: `normal`: answer errors 0, judge errors 1 (`n-010`); `ambiguous`: answer errors 0, judge errors 0; `abstention`: answer errors 0, judge errors 0. A provider failure on one case is a hole in the measurement, not a crash: the case is named here and leaves every denominator that needs answer text.
 
 ## Judge verdicts per case type
 
@@ -33,7 +33,7 @@ One `httpx` POST per case, `temperature: 0`, no `max_tokens`, expecting `{"suppo
 
 | bucket | cases | judged | judge errors | supported true | supported false | should_have_refused true | should_have_refused false |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| normal | 18 | 18 | 0 | 18 | 0 | 2 | 16 |
+| normal | 18 | 17 | 1 | 15 | 2 | 3 | 14 |
 | ambiguous | 6 | 6 | 0 | 6 | 0 | 0 | 6 |
 | abstention | 6 | 6 | 0 | 6 | 0 | 6 | 0 |
 
@@ -45,18 +45,19 @@ One `httpx` POST per case, `temperature: 0`, no `max_tokens`, expecting `{"suppo
 
 - **This is not accuracy.** The judge shares a model with the answerer, so an agreement here can be two systems agreeing with each other rather than with the world, and the golden set is 30 hand-labelled items, so each denominator below is a number that one edited case would move. The table describes this run; the disagreements underneath it are the part worth reading.
 - 6 cases are labelled `should_abstain`, which is the entire denominator of the first check.
-- 1 `normal` cases had an answer that contained one of their `must_not_include` strings — the only cases where the human label says "this answer is wrong" and the judge has something to agree or disagree with. A clean answer to a `must_not_include` case is not evidence either way and is not counted.
+- 1 `normal` cases had an answer that contained one of their `must_not_include` strings — the only cases where the human label has something to say about the answer and the judge has something to agree or disagree with. A clean answer to a `must_not_include` case is not evidence either way and is not counted.
+- **A `must_not_include` violation here is an off-scope import, not a false statement.** 4 of the 10 `normal` cases carrying a prohibition have that exact string present in the offered context and in none of their expected chunks: the corpus states it, retrieval handed it over, and the label says *this question* should not have imported it. Where the forbidden string lives is what separates a model that invented a fact from an answer that wandered into a neighbouring document, and those two need different fixes.
 
 | check | agreement | agreed / compared | excluded (no usable judge verdict) |
 | --- | --- | --- | --- |
 | human says refuse vs judge should_have_refused | 1.0000 | 6/6 | 0 |
-| human says must_not_include violated vs judge supported=false | 0.0000 | 0/1 | 0 |
+| human says off-scope import vs judge supported=false | 0.0000 | 0/1 | 0 |
 
 ### Disagreements (1) — read them, do not average them
 
 | id | type | check | human label | judge verdict | judge reason |
 | --- | --- | --- | --- | --- | --- |
-| n-018 | normal | human says must_not_include violated vs judge supported=false | violates must_not_include: at most 3 retries | supported=True | The context states that 503 is retryable and always includes Retry-After: 30, and that retrying a write with the same Idempotency-Key cannot duplicate the resource because the stored response is replayable for 24 hours. It also specifies using at most 3 retries and reusing the same key. |
+| n-018 | normal | human says off-scope import vs judge supported=false | imports an off-scope term: at most 3 retries | supported=True | The context states that 503 is retryable and carries Retry-After: 30, that write retries should reuse the same Idempotency-Key with at most 3 retries, and that replayable stored responses prevent duplicate creation. |
 
 ## Per-case results
 
@@ -79,19 +80,19 @@ Sorted by case id, so two runs of the same dataset put the same row in the same 
 | n-001 | normal | no | no | 1.0000 | rate_limits#1 | yes |
 | n-002 | normal | no | no | 1.0000 | auth#4 | yes |
 | n-003 | normal | no | no | 1.0000 | data_retention#3 | yes |
-| n-004 | normal | no | no | 1.0000 | errors#4 | yes |
+| n-004 | normal | no | no | 1.0000 | errors#4 | no |
 | n-005 | normal | no | no | 1.0000 | idempotency#3 idempotency#1 errors#2 | yes |
 | n-006 | normal | no | no | 0.5000 | pagination#1 | yes |
 | n-007 | normal | yes | no | 0.0000 | (none) | yes |
 | n-008 | normal | no | no | 1.0000 | sla#1 sla#4 | yes |
 | n-009 | normal | no | no | 1.0000 | versioning#2 | yes |
-| n-010 | normal | no | no | 1.0000 | webhooks#2 | yes |
+| n-010 | normal | no | no | 1.0000 | webhooks#2 | n/a |
 | n-011 | normal | no | no | 1.0000 | guidelines_us#7 | yes |
-| n-012 | normal | no | no | 1.0000 | guidelines_brazil#7 | yes |
+| n-012 | normal | no | no | 1.0000 | guidelines_brazil#7 | no |
 | n-013 | normal | no | no | 0.5000 | rate_limits#5 | yes |
-| n-014 | normal | no | no | 1.0000 | pagination#4 | yes |
+| n-014 | normal | no | no | 1.0000 | pagination#4 pagination#1 | yes |
 | n-015 | normal | yes | no | 0.0000 | (none) | yes |
 | n-016 | normal | no | no | 0.0000 | versioning#2 | yes |
-| n-017 | normal | no | no | 0.5000 | versioning#3 | yes |
+| n-017 | normal | no | no | 0.0000 | versioning#3 | yes |
 | n-018 | normal | no | no | 1.0000 | errors#5 idempotency#1 idempotency#3 | yes |
 
