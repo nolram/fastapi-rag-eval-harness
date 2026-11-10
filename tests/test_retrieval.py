@@ -87,19 +87,37 @@ def test_public_signatures_keep_their_contractual_defaults() -> None:
 
 def test_tokenize_lowercases_splits_on_punctuation_and_drops_one_character_tokens() -> None:
     assert tokenize("X-RateLimit-Limit") == ["ratelimit", "limit"]
-    assert tokenize("Retry-After in whole seconds") == ["retry", "after", "whole", "seconds"]
+    assert tokenize("Retry-After in whole seconds") == ["retry", "after", "whole", "second"]
 
 
 def test_tokenize_strips_markdown_backticks_asterisks_and_heading_markers() -> None:
+    # Two folding consequences live in this one fixture. `too_many_requests` folds inside the
+    # underscore-joined identifier (the corpus spells the same field that way, so query and document
+    # still meet), and `Handling` folds to the fragment `handl` because restoring a dropped silent
+    # `e` needs a lexicon.
+    # needs a lexicon. That fragment still unifies `handling` with `handled`; it simply never meets
+    # `handle`. See "Known risks of over-folding" in lumen.retrieval.
     assert tokenize("`429 too_many_requests` **bulk** `POST /v1/policies`") == [
         "429",
-        "too_many_requests",
+        "too_many_request",
         "bulk",
         "post",
         "v1",
-        "policies",
+        "policy",
     ]
-    assert tokenize("# Handling 429 ## ") == ["handling", "429"]
+    assert tokenize("# Handling 429 ## ") == ["handl", "429"]
+
+
+def test_folding_unifies_inflected_forms_but_leaves_a_silent_e_base_form_apart() -> None:
+    # The documented boundary of the design: `-ing` and `-ed` meet each other, but the base
+    # form that
+    # lost a silent `e` is not reachable without a dictionary, so it stays a separate term.
+    assert tokenize("handling") == tokenize("handled") == ["handl"]
+    assert tokenize("handle") == ["handle"]
+    # Three separate terms for one family: `making` folds to the fragment `mak`, and `made` is
+    # irregular, so no suffix rule can reach it. Splitting a family is the allowed failure
+    # direction.
+    assert tokenize("make making made") == ["make", "mak", "made"]
 
 
 def test_tokenize_drops_every_stopword_so_a_stopword_query_has_no_terms() -> None:
@@ -195,9 +213,15 @@ def test_repeated_query_terms_do_not_change_the_ranking() -> None:
 
 
 def test_title_repetition_outranks_a_chunk_that_only_holds_the_term_in_its_body() -> None:
+    # The fixture is shaped to test one thing. Both chunks index to the same length, so BM25's
+    # length
+    # normalisation cannot decide the order, and the body chunk is listed FIRST so a tie falls to it
+    # by
+    # index. The only thing left that can put head#1 first is the title repetition. Verified as a
+    # mutation: with TITLE_REPETITION = 1 the order flips to [body#1, head#1].
     corpus = [
-        Chunk(id="body#1", doc_id="body.md", title="Widgets", text="flux capacitor widget"),
-        Chunk(id="head#1", doc_id="head.md", title="Widget repair", text="flux capacitor widget"),
+        Chunk(id="body#1", doc_id="body.md", title="Gizmo notes", text="widget flux capacitor"),
+        Chunk(id="head#1", doc_id="head.md", title="Widget notes", text="gizmo flux capacitor"),
     ]
     hits = BM25.build(corpus).search("widget", k=5)
     assert [chunk.id for chunk, _ in hits] == ["head#1", "body#1"]
@@ -304,11 +328,17 @@ def test_scoring_twice_replays_the_same_cases_and_a_byte_identical_report() -> N
     assert first_bytes == second_bytes
 
 
-def test_the_cli_k_override_reaches_scoring_with_11_14_and_15_normal_passes() -> None:
-    # Measured on the committed dataset, not guessed: widening the cut-off from 1 to 5 recovers
-    # three normal cases and 5 -> 10 one more. run() is what main() calls with the parsed --k, so a
-    # flag that never reached the cut-off would give three identical counts here.
-    assert {k: _normal_pass_count(k) for k in (1, 5, 10)} == {1: 11, 5: 14, 10: 15}
+def test_the_cli_k_override_reaches_scoring_with_12_15_and_15_normal_passes() -> None:
+    # Measured on the committed dataset and on the current analyser, not guessed: widening the cut-
+    # off
+    # from 1 to 5 recovers three normal cases and 5 -> 10 recovers none. run() is what main() calls
+    # with
+    # the parsed --k, so a flag that never reached the cut-off would give three identical counts
+    # here
+    # (15, 15, 15), which is what keeps this a tripwire rather than a snapshot of quality. These
+    # numbers
+    # move when the analyser moves - suffix folding moved them from 11/14/15 to 12/15/15.
+    assert {k: _normal_pass_count(k) for k in (1, 5, 10)} == {1: 12, 5: 15, 10: 15}
 
 
 def test_a_golden_file_naming_an_unknown_expected_chunk_is_rejected_with_exit_code_two(
@@ -415,3 +445,119 @@ def test_the_harness_notices_when_a_critical_corpus_document_is_dropped(
     assert _normal_pass_ids(_run_golden(DEFAULT_K)) == before, (
         "the monkeypatch leaked: the default index no longer scores the real corpus"
     )
+
+
+# Stage 8.5 appends below this line: the suffix-folding contract of ``tokenize()`` (Stage 8's gate
+# comment above pointed here, and the two gate tests above it are the reason the folding exists).
+#
+# Every word below is an ordinary English word chosen for the spelling rule it exercises — never a
+# golden query, never a corpus sentence. That distinction is the point: a fold fitted to the eval
+# set
+# would pass a corpus-derived test and fail these ones, so the fixtures stay outside the eval set.
+
+# Inflected English words and the single term each one must fold onto.
+FOLDED_TERMS: tuple[tuple[str, str], ...] = (
+    ("locked", "lock"),
+    ("locking", "lock"),
+    ("locks", "lock"),
+    ("attempts", "attempt"),
+    ("attempted", "attempt"),
+    ("policies", "policy"),
+    ("tries", "try"),
+    ("tried", "try"),
+    ("carrying", "carry"),
+    ("cancelled", "cancel"),
+    ("cancelling", "cancel"),
+    ("travelled", "travel"),
+    ("passes", "pass"),
+    ("passed", "pass"),
+    ("stopped", "stop"),
+    ("stopping", "stop"),
+    ("occurred", "occur"),
+    ("referring", "refer"),
+    ("agreed", "agree"),
+    ("needed", "need"),
+    ("keys", "key"),
+    ("classes", "class"),
+    ("seconds", "second"),
+)
+
+
+def test_tokenize_folds_regular_english_inflection_onto_one_term() -> None:
+    for inflected, term in FOLDED_TERMS:
+        assert tokenize(inflected) == [term], inflected
+
+
+def test_folding_is_idempotent_so_folding_a_folded_token_changes_nothing() -> None:
+    for inflected, term in FOLDED_TERMS:
+        # A folded token carries no foldable suffix, so re-entry is a no-op twice over: through the
+        # term itself, and through feeding `tokenize`'s own output back into `tokenize`.
+        assert tokenize(term) == [term], term
+        assert tokenize(tokenize(inflected)[0]) == tokenize(inflected), inflected
+    # A fold whose result another rule would match again is refused instead of applied twice, which
+    # is
+    # what stops `closed` -> `clos` from going on to `clo`. Such a word is then indexed as written:
+    # a missed merge, which is the direction this is allowed to fail in.
+    assert tokenize("closed") == ["closed"]
+    assert tokenize(tokenize("closed")[0]) == tokenize("closed")
+
+
+def test_the_stem_floor_refuses_a_fold_that_would_leave_a_fragment() -> None:
+    # `being` -> `be`, `using` -> `us`, `ids` -> `id`, `gas` -> `ga`, `his` -> `hi`: every one of
+    # these
+    # leaves something shorter than an English word, so the floor refuses the fold. The floor is a
+    # length, not a list of words, which is why it still refuses words nobody thought of.
+    for token in ("being", "using", "ids", "gas", "his"):
+        assert tokenize(token) == [token], token
+
+
+def test_folding_keeps_apart_the_word_pairs_its_guards_exist_to_protect() -> None:
+    # `this` vs `his`: the `is` guard and the stem floor, or `this` would fold to `thi`/`hi` and
+    # share
+    # a term with `his`.
+    assert tokenize("this") == ["this"]
+    assert tokenize("his") == ["his"]
+    assert set(tokenize("this his")) == {"this", "his"}
+    # `use` vs `us`: `-es` is only folded off a stem spelled `ss`/`x`/`ch`/`sh`, because at a single
+    # `s` the spelling cannot tell `bus` + `es` from `case` + `s`. Folding the ambiguous one would
+    # merge the verb `uses` with the pronoun `us`.
+    assert tokenize("uses") == ["use"]
+    assert tokenize("us") == ["us"]
+    # `ss` and `us` and `is` word endings survive whole, while the real plural on the first of them
+    # still folds: `classes` -> `class`, but `class`/`business`/`status`/`axis` lose nothing.
+    for token in ("class", "business", "status", "axis"):
+        assert tokenize(token) == [token], token
+    assert tokenize("classes") == ["class"]
+    # `was` and `is` cannot collide with anything, folded or not, because STOPWORDS is applied after
+    # folding: neither token reaches the index in any spelling.
+    assert tokenize("was is") == []
+
+
+def test_stopwords_are_dropped_after_folding_so_a_word_folded_into_a_stopword_is_dropped() -> None:
+    # The order matters and is deliberate: `cans` -> `can` is a correct fold, and `can` is a
+    # stopword.
+    assert tokenize("cans") == []
+
+
+def test_the_measure_guard_folds_a_suffix_doubled_l_but_not_a_stems_own_one() -> None:
+    assert tokenize("cancelled") == tokenize("cancelling") == tokenize("cancel") == ["cancel"]
+    assert tokenize("travelled") == tokenize("travelling") == tokenize("travel") == ["travel"]
+    # `fill` and `call` simply end in a doubled `l`, so their inflected forms keep it. Folding those
+    # would strand `fil` and `cal` where the words a reader recognises should be.
+    assert tokenize("filling") == tokenize("fill") == ["fill"]
+    assert tokenize("calling") == tokenize("called") == tokenize("call") == ["call"]
+
+
+ACCOUNT_LOCK_QUERY = "what happens when my account gets locked"
+
+
+def test_a_paraphrase_that_shared_no_token_with_the_corpus_now_finds_the_lockout_chunk() -> None:
+    # The measured reason Stage 8.5 exists: this query used to share zero tokens with the corpus and
+    # retrieved nothing, while `auth.md` phrases the same fact as "Five failed attempts within 60
+    # seconds lock the API key for 15 minutes" — `locked` had never met `lock`.
+    assert "lock" in tokenize(ACCOUNT_LOCK_QUERY)
+    result = retrieve(ACCOUNT_LOCK_QUERY, k=5)
+    assert result.chunks, f"{ACCOUNT_LOCK_QUERY!r} still retrieves nothing at all"
+    assert result.top_score == result.scores[0]
+    assert result.chunks[0].doc_id == "auth.md"
+    assert result.chunks[0].id == "auth#4"

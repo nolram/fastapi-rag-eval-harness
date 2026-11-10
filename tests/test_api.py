@@ -389,8 +389,11 @@ def test_configured_threshold_abstains_before_any_request(
     result = generation.answer(
         RATE_LIMIT_QUERY,
         sample_chunks(),
-        [4.4],
-        live_settings(lumen_abstain_threshold=4.4589),
+        [4.0],
+        # 4.3303 is the lowest abstention top_score in the current eval/report.md, so this is a
+        # real candidate cutoff rather than an invented one, and 4.0 sits just under it. Both
+        # numbers were read from the report - and its bands move whenever the analyser moves.
+        live_settings(lumen_abstain_threshold=4.3303),
     )
     assert recorder.calls == 0
     assert result.abstained is True

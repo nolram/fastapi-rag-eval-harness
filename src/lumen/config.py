@@ -27,12 +27,16 @@ class Settings(BaseSettings):
     # Request default for `k` when the caller does not send one; the HTTP schema still bounds `k`.
     lumen_top_k: int = 5
 
-    # Score-based abstention is DISABLED by default and must stay that way until a measurement says
-    # otherwise. This repo measured raw retrieval scores on eval/report.md and found that no raw
-    # score threshold separates abstention cases from answerable ones: abstention top_score spans
-    # 4.4589-7.2278 while answerable top_score spans 4.5290-16.5259, and the cheapest cutoff that
-    # separates any of them costs 7 of 18 answerable cases. So `None` means "never abstain on
-    # score", and setting this field requires citing that measurement (a number, not a guess).
+    # Score-based abstention is DISABLED by default and must stay that way until a measurement
+    # says otherwise. This repo measured raw retrieval scores on eval/report.md and found that no
+    # raw score threshold separates abstention cases from answerable ones: abstention top_score
+    # spans 4.3303-9.2034 while answerable top_score spans 4.5297-20.0727, and the cheapest
+    # cutoff that covers all six abstentions (t > 9.2034) costs 10 of 18 answerable cases. Stage 8.5
+    # re-ran this measurement after changing the tokenizer and the overlap got wider, not
+    # narrower. So
+    # `None`
+    # means "never abstain on score", and setting this field requires re-reading the sweep in the
+    # current eval/report.md — a number, not a guess.
     lumen_abstain_threshold: float | None = None
 
 
