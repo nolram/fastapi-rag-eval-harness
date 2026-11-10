@@ -25,8 +25,8 @@ This repo is being built in public, stage by stage; [`ROADMAP.md`](ROADMAP.md) i
 
 | | |
 | --- | --- |
-| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` |
-| 🔜 Planned | FastAPI `/search` + `/ask` (Stage 7) · LLM-as-judge generation eval (Stage 11) · ADRs + study guide (Stage 12) |
+| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` · **FastAPI `/search` + `/ask`** |
+| 🔜 Planned | LLM-as-judge generation eval (Stage 11) · ADRs + study guide (Stage 12) |
 
 The badge above is **red, and that is the state of `main`**: CI runs `make check`, `make eval-retrieval`,
 a README-consistency check and an upload of `eval/report.md`, all under `if: always()` so one run reports
@@ -38,15 +38,53 @@ The two retrieval gates are now enforced **in the test suite as well as in the C
 The plan for making them green honestly is Stage 8.5 in the roadmap: tune the retriever, never the
 labels or the thresholds.
 
-There is **no HTTP service yet**. No `curl` examples are provided because every endpoint they would
-hit returns 404. When Stage 7 lands, the quickstart below gets an API section — a README that
-documents an endpoint that does not exist is the kind of artifact this repo exists to criticise.
+There **is** an HTTP service now: `make serve` runs `GET /health`, `POST /search` and `POST /ask`.
+Every response below was pasted from a real `curl` against a real `make serve` on this commit, and the
+answerer is in **stub mode** because `LLM_API_KEY` is empty — which is the default, and the reason no
+test or CI run can spend money.
+
+## The API
+
+```bash
+make serve            # uvicorn lumen.main:app, port 8000
+```
+
+```console
+$ curl -s localhost:8000/health
+{"status":"ok","version":"0.1.0","chunk_count":64,"mode":"stub"}
+
+$ curl -s -X POST localhost:8000/search -H 'content-type: application/json' -d '{"query":"how many requests per minute","k":1}'
+{"query":"how many requests per minute","k":1,"hits":[{"chunk_id":"rate_limits#3","doc_id":"rate_limits.md","title":"Rate limits — Handling 429 Too Many Requests","snippet":"`429 too_many_requests` means the key exceeded its per-minute budget. Retry with exponential backoff\nstarting at 2 seconds, doubling per attempt, at most 5 attempts, plus jitter of up to 500 millisec…","score":13.20236738298299}],"top_score":13.20236738298299}
+
+$ curl -s -X POST localhost:8000/ask -H 'content-type: application/json' -d '{"query":"how long is the refund window","k":1}'
+{"query":"how long is the refund window","k":1,"answer":"No answer generated: the answerer is disabled because LLM_API_KEY is empty (mode='stub'). Retrieval ran normally and the retrieved chunk ids are listed in this response, but stub mode does not produce answer text. Configure LLM_API_KEY to enable live generation.","citations":[],"context_chunk_ids":["refunds#1"],"abstained":true,"mode":"stub","prompt_version":"v1"}
+```
+
+Nothing in those blocks is abbreviated by me. The `…` inside `snippet` is the service's own truncation
+at 200 characters (`SNIPPET_MAX_CHARS`), present in the bytes the server sent. Four things the responses
+are doing on purpose:
+
+- **`mode` is reported on `/health` and on every answer.** A reader never guesses whether text came
+  from a model or from a stub, and the stub never fabricates: it abstains and names the reason.
+- **`context_chunk_ids` and `citations` are separate fields.** The first is everything retrieval
+  offered; the second is only what the answer actually cited. Collapsing them is how a RAG demo looks
+  grounded without being grounded. Stage 11's judge consumes exactly this pair.
+- **`prompt_version` travels with the answer.** If answer quality moves, the version says whether the
+  wording moved.
+- **`k` is validated at the boundary:** `k=0` and `k=99` return `422` rather than being silently
+  clamped, and an empty query is rejected too.
+
+**No endpoint can make a paid call by accident.** With no `LLM_API_KEY`, `generation.answer()`
+short-circuits before any network access; the live path is one plain `httpx` POST with
+`temperature=0`, and the suite proves the key never reaches a `repr()` or an error message. The whole
+suite was also re-run with `LLM_API_KEY` set to a fake value: still `2 failed, 86 passed`, so no test
+makes a real request or depends on one.
 
 ## Quickstart
 
 ```bash
 make install          # uv if available, else python3 -m venv + pip; installs runtime + dev deps
-make check            # ruff + mypy --strict + pytest  (70 tests, no network, no LLM)
+make check            # ruff + mypy --strict + pytest  (88 tests, no network, no LLM)
 make eval-retrieval   # scores eval/golden.jsonl, rewrites eval/report.md, gates on the normal bucket
 ```
 
@@ -164,7 +202,7 @@ eval/
 AGENT.md             the working agreement for agents working in this repo
 .github/workflows/   CI: make check, make eval-retrieval, a README-consistency check, report upload
 ROADMAP.md           stage-by-stage plan, decisions recorded as they were made
-docs/agent-dossier.md  twelve agent runs, nine incidents, and what each one cost
+docs/agent-dossier.md  thirteen agent runs, ten incidents, and what each one cost
 ```
 
 Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` covers `src/`.
@@ -176,6 +214,14 @@ Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` c
   nothing here can leak anything real.
 - **The retrieval baseline is untuned.** BM25 with stock parameters, a hand-picked stopword list, and
   no stemming. It was not optimised against the golden set, and the failing gates describe it as it is.
+- **The golden set never exercises the zero-candidate path.** BM25 here is lexical and unstemmed, so a
+  plain paraphrase can retrieve nothing at all: measured on this commit, `"what happens when my account
+  gets locked"` shares 0 of its 4 tokens with the corpus vocabulary and returns 0 hits, while the corpus
+  phrases the same fact as "five failed attempts … lock the API key". Meanwhile **0 of the 30 golden
+  cases return zero hits**, so the gates can watch ranking quality and never see the service failing to
+  find anything. Recall@5 `0.7778` is therefore a statement about ordering among candidates, not about
+  whether candidates exist — and 28 of the 30 golden queries still carry at least one out-of-vocabulary
+  term (about half their tokens on average), which is why the numbers move under rephrasing.
 - **Ambiguity is synthetic.** The US/Brazil document pairs collide on purpose to give the eval a case
   type most RAG demos skip. Real-world ambiguity is messier than 6 cases.
 - **Thresholds were chosen before the first run**, at 0.80 / 0.70, and are a contract rather than an

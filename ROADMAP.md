@@ -1,7 +1,7 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–6 and 8–10 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
-metrics, retrieval eval harness, README + agent dossier, quality gates, CI, AGENT.md). Stage 7 (the FastAPI service) is next.
+**Status: Stages 0–10 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
+metrics, retrieval eval harness, README + agent dossier, quality gates, CI, AGENT.md, the FastAPI service). Stage 11 (the gated generation eval) is next.
 **`make check` is currently RED by design** — the two Stage 8 gates fail on the present retriever.
 Implementation was delegated stage-by-stage to subagents and reviewed by the parent before committing;
 each stage's gate is recorded below.
@@ -167,6 +167,39 @@ readable thesis, then asked for a third deliverable: a public record of **how** 
 - `tests/test_api.py` with `TestClient`, `/ask` exercised with LLM **disabled** (no paid call in tests).
 - Gate: `pytest tests/test_api.py` green; `make serve` answers the README `curl`.
 - Commit: `feat: FastAPI search/ask endpoints`
+- **DONE.** `tests/test_api.py`: 18 passed. Whole repo: **2 failed, 86 passed** (the two failures are
+  still the Stage 8 gates; the delta is exactly the 18 new tests). `ruff check .` and `mypy src`
+  (strict, 8 files) clean. `make serve` answered all three endpoints for real; the JSON in `README.md`
+  is pasted from that run at `k=1` on port 8000, nothing abbreviated — the `…` in the snippet is the
+  service's own 200-character truncation, verified: the chunk is 204 characters and the field arrives at
+  exactly 200 ending in `…`.
+- Layering held: `main` → `generation` → (`prompts`, `retrieval`) → `chunking`; `config.py` is the only
+  module that reads the environment. `/health` and `/ask` both report `mode` (`stub` with no key), so
+  the answerer's honest state is visible without probing it.
+- **No paid call, proven two ways.** The suite monkeypatches `httpx.post`/`httpx.Client.post` to raise on
+  any call, and the live path is exercised only through `httpx.MockTransport`. Independently, the parent
+  re-ran the whole suite with `LLM_API_KEY` and `LLM_MODEL` set to fake values: still `2 failed, 86
+  passed` — no test makes or needs a real request.
+- Credential discipline tested, not asserted: the API key appears in the outgoing header but the tests
+  assert it is absent from `repr()` of the result and of both failure modes (bad status, transport
+  error). Exception messages carry a status code only; the provider body is never included, because an
+  upstream error page can echo request material.
+- `LUMEN_ABSTAIN_THRESHOLD` stayed `None` and **no score-based abstention was added**. The field carries
+  a comment citing the measured overlap (4.4589–7.2278 vs 4.5290–16.5259, 7 of 18 cases lost) so that
+  the next person cannot set it without confronting that number. Two tests pin both directions: nothing
+  abstains on score by default, and a configured threshold abstains before any request leaves.
+- **The finding of the stage (I10 in the dossier):** curling `/ask` with `"what happens when my account
+  gets locked"` returned `context_chunk_ids: []` — 0 of its 4 tokens exist in the corpus vocabulary, and
+  the corpus says "five failed attempts … lock the API key". Measured against the dataset: **0 of the 30
+  golden cases retrieve zero candidates**, though 28 of 30 carry out-of-vocabulary terms (~50% of their
+  tokens on average). The gates watch ranking among candidates and are blind to the absence of
+  candidates. This is now recorded as a limitation in `README.md` and `AGENT.md` §8.
+- Two traps I hit and recorded rather than hid: `pkill -f "uvicorn lumen.main"` matched the shell's own
+  command line and killed the audit session (and again with `pgrep -f`) — use `pkill -f "[u]vicorn"` with
+  a command line that does not itself contain the pattern, or kill by port. And the child run finished in
+  **28 m 34 s**, 1 m 26 s inside the 30-minute ceiling that killed two Stage 6 children: this brief was
+  six files, and it nearly cost the stage. Larger briefs still cost time proportionally; the next one
+  gets split.
 
 ## Stage 8 — Quality gates as tests
 
@@ -204,6 +237,9 @@ The operator's instruction was "we adjust in later phases". Recorded as a stage,
   if a label is genuinely wrong, it is reported as a labelling bug, not silently repaired mid-tuning.
 - Because `eval/report.md` is committed, each tuning step shows up as a diff of the report; the README
   numbers then have to be refreshed from the new run, which is the same single-source rule as Stage 12.
+- Stage 7 added a second, better-motivated target than "raise Recall@5": **the zero-candidate path**.
+  A stemming or synonymy change that turns `"account gets locked"` from 0 hits into a hit on `auth#4`
+  is worth more than a reranking tweak, and it is justified by a named query rather than by a score.
 
 ## Stage 9 — CI
 

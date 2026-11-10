@@ -52,7 +52,7 @@ Each of these is checkable; run the command, do not assert the result.
 
 | path | what lives there | who may import it |
 | --- | --- | --- |
-| `src/lumen/` | heading-aware markdown chunker, pure-Python BM25 (`k1=1.5`, `b=0.75`), `py.typed` | `eval/`, `tests/`, the Stage 7 app; it imports nothing in this repo but itself |
+| `src/lumen/` | chunker, BM25 (`k1=1.5`, `b=0.75`), `config.py`, `schemas.py`, `prompts.py`, `generation.py`, `main.py`, `py.typed` | `eval/`, `tests/`; it imports nothing in this repo but itself |
 | `src/lumen/corpus/` | the 12 fictional API documents — the only knowledge the system has, 64 chunks | package data read by `lumen.retrieval`; nothing imports it |
 | `eval/` | `golden.jsonl`, `metrics.py`, `retrieval_eval.py` (computes), `report.py` (renders), `report.md`, `README.md` | `tests/` only; `eval/` may import `lumen` |
 | `tests/` | 70 pytest tests, including the two gate assertions and the corpus tripwire | nothing imports `tests/` |
@@ -178,8 +178,10 @@ and not the paragraph around it.
 - [ ] Every 4-decimal figure in `README.md` appears **verbatim** in `eval/report.md`. Two figures were
       once published there that were true measurements and simply not in the report — under this rule
       they were ineligible anyway (I3).
-- [ ] No `curl` example documents an endpoint that does not exist. There is no service yet: `make serve`
-      dies with `Error loading ASGI app. Could not import module "lumen.main"` (measured).
+- [ ] No `curl` example documents an endpoint that does not exist, and no pasted response is
+      abbreviated. The service exists (`make serve`, `GET /health`, `POST /search`, `POST /ask`), so a
+      README block must be pasted from a run of it — the JSON in `README.md` was captured at `k=1` on
+      port 8000 with the answerer in stub mode, and eliding a field with `…` counts as fabricating it.
 - [ ] Anything written about a target you did not run is marked *planned*; anything written about one
       you did run states what it printed (I4).
 - [ ] Commit is one logical change with an allowed prefix; `git status --short` shows nothing outside
@@ -193,6 +195,11 @@ documents:
 - It **cannot detect a score computed on the wrong bucket.** A blended `0.90` over all 30 cases looks
   great and is meaningless; nothing here rejects it. Only the bucket name printed on the gate line —
   `over normal (18 cases)` — and a reader who checks it.
+- It **cannot see retrieval that returns nothing.** BM25 here is lexical and unstemmed, so a plain
+  paraphrase can retrieve zero candidates — measured: `"what happens when my account gets locked"`
+  shares 0 of its 4 tokens with the corpus vocabulary and gets 0 hits, while the corpus says "five
+  failed attempts … lock the API key". **No golden case exercises that path** (0 of 30 return zero
+  hits), so the gates cannot see the worst failure mode the service has.
 - It **cannot tell a 30-case toy dataset from a production one.** `README.md` says in its own header
   that 30 hand-labelled cases over 12 documents are for regression detection, not a quality claim; an
   agent can still quote `0.7778` as product quality and nothing here stops it.

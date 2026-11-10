@@ -45,8 +45,9 @@ Durations are the harness-recorded wall-clock of each child run, read from its `
 | 10 | 8 — gates + tripwire | `5c4af6c1` | 11 m 15 s | complete (red, as designed) |
 | 11 | 9 — CI workflow | `facdf57f` | 9 m 35 s | complete |
 | 12 | 10 — `AGENT.md` | `6897d047` | 13 m 48 s | complete |
+| 13 | 7 — FastAPI service | `c41389e1` | 28 m 34 s | complete, **26 s from the timeout** |
 
-**Total delegated time: 3 h 2 m. Of that, 60 m — 33% — went into two runs that timed out on the same
+**Total delegated time: 3 h 31 m. Of that, 60 m — 28% — went into two runs that timed out on the same
 stage.** The single fastest child in the build (6 m 45 s) did its job on the first try, and it is the one
 whose brief named exactly one file it was allowed to write. Stage 8 was written to that same rule — one
 file, one marker, expected-red — and cleared in one attempt.
@@ -73,7 +74,8 @@ The harness then reported: `Compaction-induced child abort could not be resumed 
 
 **What it taught.** A child brief is a work-estimation unit, not a wish. Two fixes, both now policy:
 name **one write target** per brief (run 9 was written that way and finished in a fifth of the time),
-and split any brief that contains the word "also" more than once. The 40% was not model error. It was
+and split any brief that contains the word "also" more than once. That share of the budget was not
+model error. It was
 my planning error, and it cost the most expensive minutes of the build.
 
 ### I2 — a timed-out child left the build red
@@ -196,6 +198,26 @@ itself. I have since stopped writing counts into briefs when the file the count 
 
 **Evidence.** `grep -A6 '^dependencies' pyproject.toml` prints the five runtime packages ·
 `AGENT.md` §9, last bullet · the Stage 10 handoff.
+
+### I10 — the eval cannot see the service failing to find anything
+
+**What happened.** Auditing the new `/ask` endpoint, I curled it with `"what happens when my account gets
+locked"`. Retrieval returned **nothing** — `context_chunk_ids: []`. Not a bug: BM25 here is lexical and
+unstemmed, that phrasing shares **0 of its 4 tokens** with the corpus vocabulary, and the corpus words
+the same fact as "five failed attempts within 60 seconds lock the API key for 15 minutes". So I measured
+the golden set against the same question: **0 of its 30 cases retrieve zero candidates.** The eval
+therefore exercises ordering among candidates and never exercises the absence of candidates — while 28
+of the 30 golden queries already contain out-of-vocabulary terms (about half their tokens on average).
+
+**What it taught.** A metric can be honest and still be measuring the wrong failure. Recall@5 `0.7778`
+is a truthful number about a dataset that flatters the retriever's weakest point: queries written with
+corpus-ish vocabulary. The fix is not to tune — it is to add the paraphrase dimension to the dataset and
+to say, wherever `0.7778` appears, that it is a claim about ranking, not about coverage. Recorded against
+Stage 8.5, where a stemming or synonymy change is the honest candidate and must be justified by named
+cases, not by the score.
+
+**Evidence.** `grep -n "failed attempts" src/lumen/corpus/auth.md` · the zero-hit probe and the 30-case
+vocabulary sweep are reproduced in `ROADMAP.md`, Stage 7.
 
 ## What the briefs said
 
