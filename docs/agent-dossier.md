@@ -413,6 +413,22 @@ many files carried the old one. The fix is not more diligence — it is the same
 in this file: prefer the sentence that names the command to the sentence that states the result, so the
 reader runs `make check` instead of trusting me.
 
+### I20 — I pushed a workflow that could not be parsed, and the only check that could
+
+**What happened.** Adding one CI step for Stage 11, I named it
+`make eval-generation (no key available: must skip cleanly with exit 0)`. A plain YAML scalar
+containing `: ` is a mapping, so the workflow file was invalid and Actions refused it: the run reported
+`failure` in `0s` with **zero jobs**, which looks nothing like a red test and took a `gh api` call
+listing jobs (empty) to identify. `make check` was green on the same commit, because a workflow file is
+not a Python file.
+
+**What it taught.** Two things. First, `0s / no jobs` is a distinguishable failure shape and is worth
+knowing: it means the file, not the build. Second, and worse, the obvious guard — parse the workflow in
+`make check` — needs a YAML library, which is a dependency nobody approved, so I did not add it. What
+would have caught it for free is a five-line stdlib scan for a `name:` line carrying a second `: `, plus
+an assertion that any commit touching `.github/` shows a CI run *with jobs*. Not built yet; recorded in
+ROADMAP as debt, which is the honest alternative to pretending the mistake was unpreventable.
+
 ## What the briefs said
 
 A child receives no chat history — only the brief, the repo, and its own reading. Briefs in this build

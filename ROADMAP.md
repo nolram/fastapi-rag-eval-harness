@@ -402,6 +402,11 @@ differences are the point:
 
 - `make check`, `make eval-retrieval`, `pytest -q`, `git ls-files`; push to `main` (no force push,
   no other user/org).
+- **Carry this debt into the acceptance run (I20):** a workflow step name containing `: ` made the whole
+  file unparseable and the run failed in 0 s with zero jobs, invisibly to `make check`. Add the
+  dependency-free guard — a stdlib scan of `.github/workflows/*.yml` for a `name:` line with a second
+  `: ` — and assert that a commit touching `.github/` produces a CI run **with jobs**, which is the check
+  that actually distinguishes "red build" from "rejected file".
 - **C4 final report**: (1) repo URL · (2) literal `make eval-retrieval` output per case type ·
   (3) pass/fail counts on the **first** run and any gate that failed (left failing) · (4) `git ls-files` tree ·
   (5) every divergence from the prompt and why.
