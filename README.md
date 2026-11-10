@@ -11,7 +11,8 @@ Every number below comes from a real `make eval-retrieval` run on this commit.
 There are two studies in this repo, and they are about different things. The code studies **how to keep
 an LLM system honest** — a hand-labelled dataset, a deterministic judge, gates that are allowed to fail.
 [`docs/agent-dossier.md`](docs/agent-dossier.md) studies **what it is like to have LLM agents build
-it** — sixteen delegated runs, five of them timed out, a build left red for five stages, and the audit
+it** — nineteen delegated runs, eight of them reaching a 30-minute ceiling, a build left red for five
+stages, and the audit
 that caught this README citing a number the report did not contain.
 
 > **30 hand-labelled cases on a 12-document toy corpus are for regression detection, not a quality
@@ -85,14 +86,14 @@ are doing on purpose:
 **No endpoint can make a paid call by accident.** With no `LLM_API_KEY`, `generation.answer()`
 short-circuits before any network access; the live path is one plain `httpx` POST with
 `temperature=0`, and the suite proves the key never reaches a `repr()` or an error message. The whole
-suite was also re-run with `LLM_API_KEY` set to a fake value: still `143 passed`, so no test
+suite was also re-run with `LLM_API_KEY` set to a fake value: still every test passing, so no test
 makes a real request or depends on one.
 
 ## Quickstart
 
 ```bash
 make install          # uv if available, else python3 -m venv + pip; installs runtime + dev deps
-make check            # ruff + mypy --strict + pytest  (143 tests, no network, no LLM)
+make check            # ruff + mypy --strict + pytest  (153 tests, no network, no LLM)
 make eval-retrieval   # scores eval/golden.jsonl, rewrites eval/report.md, gates on the normal bucket
 make eval-generation  # with no LLM_API_KEY this prints one skip line and exits 0 — CI has no key
 ```
@@ -145,7 +146,7 @@ mrr over normal (18 cases): 0.7269 >= 0.70 PASS
 
 Those two figures are also pytest assertions in `tests/test_retrieval.py`, and they were **failing here
 for five stages** — Stage 8.5 moved them past the bar by changing the analyser and nothing else (see
-[What Stage 8.5 changed](#what-stage-85-changed)). The whole suite is `pytest (143 tests, 0 failures)`;
+[What Stage 8.5 changed](#what-stage-85-changed)). The whole suite is `pytest (153 tests, 0 failures)`;
 a third test in that file is the tripwire — green, because it asserts that the harness **notices** when a
 corpus document disappears (dropping `webhooks.md` flips one passing case to failing).
 
@@ -276,7 +277,9 @@ docs/adr/            three architecture decision records: why the harnesses are 
                      labels came first, why the evals live in-tree
 docs/study-guide.md  seven exercises with executed expected-output, including one that breaks this
                      repo's own metric in ten minutes
-docs/agent-dossier.md  sixteen agent runs, twenty-one incidents, and what each one cost
+docs/agent-dossier.md  nineteen agent runs, twenty-six incidents, and what each one cost
+docs/acceptance.md     what was actually run at the end, the first red run kept verbatim, and every
+                       divergence from the brief
 ```
 
 Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` covers `src/`.
