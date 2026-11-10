@@ -1,7 +1,8 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–10 complete** (bootstrap, corpus, chunker, BM25 retrieval, `golden.jsonl`,
-metrics, retrieval eval harness, README + agent dossier, quality gates, CI, AGENT.md, the FastAPI service). Stage 11 (the gated generation eval) is next.
+**Status: Stages 0–10 complete, plus Stage 8.5** (bootstrap, corpus, chunker, BM25 retrieval,
+`golden.jsonl`, metrics, retrieval eval harness, README + agent dossier, quality gates, CI, AGENT.md,
+the FastAPI service, one honest retriever tuning pass). Stage 11 (the gated generation eval) is next.
 **`make check` is currently RED by design** — the two Stage 8 gates fail on the present retriever.
 Implementation was delegated stage-by-stage to subagents and reviewed by the parent before committing;
 each stage's gate is recorded below.
@@ -226,9 +227,9 @@ readable thesis, then asked for a third deliverable: a public record of **how** 
   that the harness notices the loss. A test that is red in the committed state proves nothing about
   sensitivity and just adds noise to an already-red run.
 
-## Stage 8.5 — make the gates honest-green (deferred by the operator, recorded here so it is not lost)
+## Stage 8.5 — make the gates honest-green (DONE)
 
-The operator's instruction was "we adjust in later phases". Recorded as a stage, not a hope.
+Deferred by the operator at Stage 8, recorded here so it was not lost, executed after Stage 10.
 
 - The gates may turn green **only** through the retriever: chunking and BM25 (`k1`, `b`, tokenisation,
   title weighting, stopword list), never through `golden.jsonl`, `eval/metrics.py`, the two thresholds,
@@ -240,6 +241,55 @@ The operator's instruction was "we adjust in later phases". Recorded as a stage,
 - Stage 7 added a second, better-motivated target than "raise Recall@5": **the zero-candidate path**.
   A stemming or synonymy change that turns `"account gets locked"` from 0 hits into a hit on `auth#4`
   is worth more than a reranking tweak, and it is justified by a named query rather than by a score.
+- **DONE — one variable, one commit.** `tokenize()` in `src/lumen/retrieval.py` now folds regular English
+  inflectional suffixes. `k1`, `b`, the stopword list, the title weight, `chunking.py`, both thresholds,
+  `eval/metrics.py` and `eval/golden.jsonl` are untouched; `git diff --stat` for this stage lists
+  `retrieval.py`, `tests/test_retrieval.py` and `eval/report.md` and nothing else.
+- Hypothesis, owned by the parent and handed down: the corpus says *lock*, a user says *locked*; a purely
+  lexical analyser cannot bridge that, and the fix is morphology-free suffix folding, not a synonym table.
+  **Anti-overfitting rule stated before implementing:** every rule had to be justified by an English
+  generalisation that could be explained to someone who had never seen the golden set; a rule whose only
+  merit was a named case was deleted. Rules were considered and refused on those grounds — the record of
+  that is in the module's own comments.
+- Measured, by the parent's own script and not by the child's word: `normal` Recall@5 `0.7778 → **0.8333**`,
+  MRR `0.6713 → **0.7269**`, nDCG@5 `0.6979 → 0.7534`, Precision@5 `0.1556 → 0.1667`, cases passing
+  `14/18 → 15/18`. Gates: **both PASS**, `make eval-retrieval` exits 0, `make check` fully green
+  (`96 passed`) for the first time in the repo's history.
+- **Flip list, both directions: `n-002` FAIL→PASS; nothing PASS→FAIL.** Still failing: `n-007`, `n-015`,
+  `n-016` — each now retrieves a confident wrong document rather than nothing, which is the more
+  interesting failure and the reason the gates are not the end of the story.
+- The `ambiguous` bucket is untouched at `1.0000` (6/6) and abstention still yields `mrr 0.0000` with
+  `n/a` recall — the change did not buy its numbers by softening either bucket.
+- The abstention finding got **stronger** under the change, which is the opposite of what a tuning pass
+  usually produces: the overlap interval moved from `[4.5290, 7.2278]` to `[4.5297, 9.2034]` and the
+  cheapest covering cutoff went from costing `7 of 18` answerable cases to `10 of 18` (55.6%). Recorded
+  in `eval/README.md` as a re-measurement, not a restatement.
+- Stage 7's blind spot: `"what happens when my account gets locked"` went from **0 candidates** to 3,
+  led by **`auth#4`** — the exact chunk the golden set names for that fact. But **0 of the 30 golden
+  cases retrieve zero candidates, before or after**, so nothing in this dataset would notice if a future
+  change re-broke it. The limitation is reworded, not removed.
+- Costs, stated rather than buried: `handling`/`handled` fold to the fragment `handl` and never meet
+  `handle` (restoring a dropped silent `e` needs a lexicon); `too_many_requests` folds inside the
+  underscore-joined identifier; `make`/`making`/`made` stay three terms. Each is pinned by a test, so the
+  behaviour is a decision. The design prefers **splitting a word family to merging two unrelated words**.
+- Four pre-existing assertions became false statements about the new analyser and were updated with the
+  operator-approved narrow grant: two tokenizer expectations (`seconds → second`, `policies → policy`),
+  the `--k` pass-count tripwire (`11/14/15 → 12/15/15`, re-measured, still non-vacuous because an ignored
+  `--k` would print `15/15/15`), and the title-repetition fixture, whose premise the folding destroyed.
+  The replacement fixture was **proved non-vacuous before being trusted**: at `TITLE_REPETITION = 1` the
+  order flips to `[body#1, head#1]`. The first fixture I wrote for it passed for the wrong reason (BM25
+  length preference, not title weight) and was thrown away.
+- The two gate assertions and their comments are byte-identical to Stage 8's, verified with
+  `git diff tests/test_retrieval.py`.
+- A trap for the next reader, because the digits collide: the `normal` gate now reads `0.8333`, which is
+  exactly the number the **blended all-30** line printed before this stage. The blended line itself moved
+  to `0.8750`. Quote the bucket name, or the coincidence does the misleading for you.
+- Everything derived from the old scores went stale in the same instant and was re-captured, not
+  reworded: the `curl` block in `README.md` (the pasted score moved from `13.20236738298299` to
+  `10.622093619866167` because the analyser changed under it), the README badges, the `pytest` count the
+  CI docs-check compares, and the abstention bands in `AGENT.md` and `eval/README.md`.
+
+## Stage 9 — CI
 
 ## Stage 9 — CI
 

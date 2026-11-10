@@ -64,9 +64,12 @@ table (last, so the summary is the first thing on screen).
 **Gates.** Two lines, and each line names the bucket it was measured over:
 
 ```text
-recall@5 over normal (18 cases): 0.7778 >= 0.80 FAIL
-mrr over normal (18 cases): 0.6713 >= 0.70 FAIL
+recall@5 over normal (18 cases): 0.8333 >= 0.80 PASS
+mrr over normal (18 cases): 0.7269 >= 0.70 PASS
 ```
+
+The last word is the verdict — `FAIL` on any line makes the CLI exit 1, and that line is the one to
+quote when a gate misses.
 
 The gates are **`normal` only** — a decision recorded in `ROADMAP.md` before any number was computed.
 Blending the three case types into one mean is what this repo exists to refuse: abstention cases
@@ -108,15 +111,18 @@ are reported on the same row, because one half of a contradiction is not a win:
 | `recall@k normal (truncated)` | recall recomputed **on the truncated list** — what the answer can still see after the cut |
 
 **Why raw-score thresholds are fragile** (measured on this corpus, not asserted): the 6 abstention
-cases score **4.4589 – 7.2278**; the 18 answerable `normal` cases score **4.5290 – 16.5259**. The
+cases score **4.3303 – 9.2034**; the 18 answerable `normal` cases score **4.5297 – 20.0727**. The
 ranges overlap, so **no** value of `t` separates them: 5 of 6 abstention cases outscore the weakest
-normal case, and 7 of 18 normal cases are outscored by the strongest abstention case. Nothing in the
+normal case, and 10 of 18 normal cases are outscored by the strongest abstention case. Nothing in the
 `0.5–4.0` sweep covers even one abstention, and the smallest threshold that would cover all six
-(`t > 7.2278`) removes the answer from **7 of 18** normal cases — 38.9% of the questions the system
-can currently answer, traded for 7 refusals. Any constant that "works" is a property of *this*
+(`t > 9.2034`) removes the answer from **10 of 18** normal cases — 55.6% of the questions the system
+can currently answer, traded for 10 refusals. Any constant that "works" is a property of *this*
 corpus, *this* tokenizer and *this* day: it moves when a document is edited, when the corpus grows,
-or when the tokenizer changes. A normalised signal — the margin between the top two scores, or a
-classifier judged on labels — is the version of this decision that transfers.
+or when the tokenizer changes. **Measured, not argued:** Stage 8.5 changed the tokenizer and this
+finding got *worse*, not better — the same cut went from costing 7 of 18 answerable cases to costing
+10 of 18, and the overlap interval moved from `[4.5290, 7.2278]` to `[4.5297, 9.2034]`. A normalised
+signal — the margin between the top two scores, or a classifier judged on labels — is the version of
+this decision that transfers.
 
 **Per-case results.** `id`, type, verdict, expected and retrieved chunk ids, `top_score`, the four
 metrics, an informational column, and the query. `must_include` / `must_not_include` are
@@ -133,10 +139,13 @@ and abstention scores are sorted by `(score, case id)` so equal scores cannot sw
 different run. Two runs are byte-identical, and stdout and `--report` differ only by the file's
 trailing newline. `tests/test_retrieval.py` asserts this.
 
-## Stage 6 outcome, as measured
+## Stage 6 and Stage 8.5 outcome, as measured
 
-At the time of writing the gates **fail** and CI is red: `recall@5 = 0.7778` (needs `0.80`) and
-`mrr = 0.6713` (needs `0.70`) over `normal`; 14/18 normal cases pass. Four normal cases miss their
-chunk inside the top 5 — `n-002`, `n-007`, `n-015`, `n-016` — while all 6 ambiguous pairs are
+**Stage 6 through Stage 10 the gates failed and CI was red**: `recall@5 = 0.7778` (needs `0.80`) and
+`mrr = 0.6713` (needs `0.70`) over `normal`; 14/18 normal cases passed, and four missed their chunk
+inside the top 5 — `n-002`, `n-007`, `n-015`, `n-016`. That state was committed, and nothing lowered
+the bar. **Stage 8.5 changed the tokenizer** (suffix folding in `lumen.retrieval.tokenize`) and the
+gates now pass at `0.8333` / `0.7269` with **15/18** normal cases. One case flipped (`n-002`), none
+regressed, and three still miss — `n-007`, `n-015`, `n-016` — while all 6 ambiguous pairs are
 retrieved together. That is a BM25 recall problem on paraphrased queries, and it is the input to
 Stage 8, not a reason to move a threshold.

@@ -45,15 +45,25 @@ Durations are the harness-recorded wall-clock of each child run, read from its `
 | 10 | 8 — gates + tripwire | `5c4af6c1` | 11 m 15 s | complete (red, as designed) |
 | 11 | 9 — CI workflow | `facdf57f` | 9 m 35 s | complete |
 | 12 | 10 — `AGENT.md` | `6897d047` | 13 m 48 s | complete |
-| 13 | 7 — FastAPI service | `c41389e1` | 28 m 34 s | complete, **26 s from the timeout** |
+| 13 | 7 — FastAPI service | `c41389e1` | 28 m 34 s | complete, **1 m 26 s from the timeout** |
+| 14 | 8.5 — suffix folding | `ddbd720d` | **30 m 00 s** | **timed out mid-edit; parent finished the work** |
 
-**Total delegated time: 3 h 31 m. Of that, 60 m — 28% — went into two runs that timed out on the same
-stage.** The single fastest child in the build (6 m 45 s) did its job on the first try, and it is the one
+**Total delegated time: 4 h 1 m. Of that, 90 m — 37% — went into three runs that timed out.** The single
+fastest child in the build (6 m 45 s) did its job on the first try, and it is the one
 whose brief named exactly one file it was allowed to write. Stage 8 was written to that same rule — one
 file, one marker, expected-red — and cleared in one attempt.
 
 Stages 0–5 each completed in one attempt. The stage that broke the pattern is the one that was
 biggest, least specified, and asked for four deliverables at once.
+
+Run 14 changes the diagnosis slightly. It was **not** a big brief: one file, one hypothesis, a
+three-file write target. It timed out anyway, and the thing that ate the clock was a **correct
+interruption** — it stopped to ask permission to edit four pre-existing tests, waited on the answer, and
+then spent its remaining minutes on the mechanical cleanup the change had caused. A brief that is honest
+about a shared tree generates round-trips; the round-trips cost wall-clock; the wall-clock is the budget.
+The lesson is not "let the child decide". Run 14 was right to ask, and the parent still finished the
+work by hand. The lesson is that a stage needing judgement in a shared tree should be budgeted as two
+runs, or run by the parent.
 
 ## Incidents
 
@@ -218,6 +228,69 @@ cases, not by the score.
 
 **Evidence.** `grep -n "failed attempts" src/lumen/corpus/auth.md` · the zero-hit probe and the 30-case
 vocabulary sweep are reproduced in `ROADMAP.md`, Stage 7.
+
+**Addendum, after Stage 8.5.** Part of this was acted on and part of it stands, and the split is the
+interesting part. The probe now retrieves: suffix folding takes `"account gets locked"` to **`auth#4`,
+top of 3 candidates**. What did *not* change is the sentence that mattered most — **0 of the 30 golden
+cases retrieve zero candidates, before or after** — so the dataset is still blind to this failure mode,
+and the fix I called for (a paraphrase dimension in the golden set) is still unmade. A retriever fix
+closed a query; only a dataset fix closes the class.
+
+### I11 — a rule written to protect the gates nearly caused a silent rewrite of them
+
+**What happened.** Stage 8.5 changed the tokenizer, and four pre-existing tests in `tests/test_retrieval.py`
+became false statements about the new code: two asserted exact `tokenize()` outputs, one asserted the
+measured `--k` pass counts (`11/14/15`), and one — the title-repetition test — had its premise *destroyed*,
+because folding made its two fixtures identical. The child's brief said "do not edit anything above the last
+test", a rule written to keep a child from softening the two gate assertions. Read literally, the rule made
+the stage impossible: the only way to satisfy both the rule and the code was a no-op tokenizer. The child
+stopped, named all four, and asked.
+
+**What it taught.** A prohibition that is stated as a boundary rather than a purpose will eventually
+conflict with reality, and the failure mode is not rebellion — it is an agent quietly editing the one
+thing the rule existed to protect, because that is the only path that satisfies the letter of both
+instructions. The grant that unblocked it was narrow on purpose: those four tests only; exact-equality
+assertions kept, no subset checks; the `--k` counts re-measured from a pasted run plus a proof the
+tripwire is still live (an ignored `--k` would print `15/15/15`, which differs); the gate assertions and
+their comments byte-identical, verified with `git diff`. And every diff to a pre-existing test had to be
+listed in the report with a one-line justification, so the audit was a diff and not a conversation.
+
+**The part that would have passed review.** Rebuilding the broken fixture, the first candidate I wrote
+*passed*. It also passed with the title weight removed — BM25's length preference was deciding the order,
+not the thing under test. A test that passes for the wrong reason is invisible to the suite and invisible
+to CI; the only reason it surfaced is that the grant demanded a mutation run before the fixture was
+trusted. That demand is cheap and it belongs in every brief that touches a test fixture.
+
+### I12 — the parent's own one-line script broke two files
+
+**What happened.** Cleaning up 32 over-long comment lines, I ran a script that reflowed them with
+`textwrap`. It re-emitted continuation lines with spaces as padding but dropped the `#` prefix, so every
+folded comment became bare indented text in the middle of a module and a test file. Two files stopped
+parsing. Nothing had been lost — the damage was whitespace and comment markers — but "nothing had been
+lost" is a claim, not a measurement.
+
+**What it taught.** Mechanical edits to text scale a mistake across every file it touches, and they fail
+silently because they never intend to change behaviour. Two habits turned it around: *enumerate the
+candidates before applying* — I printed all 16 lines the repair would touch and read them, and every one
+was a sentence fragment ("it", "of", "and", "stopword."), which is what made the repair safe; and
+*re-run the known-good expectations after* — the suite had to come back at the exact counts I had
+measured before the script, or the repair was not a repair. After this I stopped scripting formatting in
+this repo. A 30-line mechanical fix done by hand is cheaper than one bad script plus its audit.
+
+### I13 — the third time I published arithmetic as if it were a measurement
+
+**What happened.** In one session I wrote "60 m — 32%" of the budget lost to timeouts, and "the child
+finished 26 seconds inside the ceiling". The script said 28.4%. And 30:00 − 28:34 is 1 m 26 s, not 26
+seconds. Both figures were plausible, both were *mine*, and neither had been computed by anything except
+me thinking.
+
+**What it taught.** This repo's whole argument is that a number must name the command that produced it
+(I3, I7), and the rule does not stop applying when the author is the one writing the rule — especially
+then, because a derived figure feels more trustworthy than a fetched one. The two that slipped were both
+*derived*: a percentage and a subtraction. Derived numbers get computed, or they get removed. The README
+carries the same lesson in a harder form: because every 4-decimal figure in it must appear verbatim in
+`eval/report.md`, the sentence "Recall moved 0.0556" was rejected by the rule and rewritten as one case
+in eighteen — the arithmetic became unquotable, so it had to become a fact instead.
 
 ## What the briefs said
 

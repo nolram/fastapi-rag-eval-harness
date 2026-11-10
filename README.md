@@ -6,18 +6,17 @@ A small retrieval-augmented service for a fictional B2B insurance API ("Lumen") 
 thing that actually makes RAG defensible: a hand-labelled dataset, a deterministic eval that runs in
 under a second with no network, and quality gates that are allowed to fail. The retrieval is BM25
 written in plain Python on purpose — the subject of this repo is the **measurement**, not the ranker.
-Every number below comes from a real `make eval-retrieval` run on this commit, including the two that
-are in **red**.
+Every number below comes from a real `make eval-retrieval` run on this commit.
 
 There are two studies in this repo, and they are about different things. The code studies **how to keep
-an LLM system honest** — a hand-labelled dataset, a deterministic judge, gates that are allowed to
-fail. [`docs/agent-dossier.md`](docs/agent-dossier.md) studies **what it is like to have LLM agents build
-it** — nine delegated runs, two of them timed out, a build left red, and the audit that caught this
-README citing a number the report did not contain.
+an LLM system honest** — a hand-labelled dataset, a deterministic judge, gates that are allowed to fail.
+[`docs/agent-dossier.md`](docs/agent-dossier.md) studies **what it is like to have LLM agents build
+it** — fourteen delegated runs, three of them timed out, a build left red for five stages, and the audit
+that caught this README citing a number the report did not contain.
 
 > **30 hand-labelled cases on a 12-document toy corpus are for regression detection, not a quality
-> claim.** A Recall@5 of 0.78 here means *"this harness can see a regression"*, not *"the product is
-> 78% good"*. Anyone quoting these numbers as product quality is misusing this repo.
+> claim.** A Recall@5 of 0.83 here means *"this harness can see a regression"*, not *"the product is
+> 83% good"*. Anyone quoting these numbers as product quality is misusing this repo.
 
 ## Status: what is built, what is planned
 
@@ -25,18 +24,21 @@ This repo is being built in public, stage by stage; [`ROADMAP.md`](ROADMAP.md) i
 
 | | |
 | --- | --- |
-| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` · **FastAPI `/search` + `/ask`** |
+| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` · **FastAPI `/search` + `/ask`** · **retriever tuning (Stage 8.5)** |
 | 🔜 Planned | LLM-as-judge generation eval (Stage 11) · ADRs + study guide (Stage 12) |
 
-The badge above is **red, and that is the state of `main`**: CI runs `make check`, `make eval-retrieval`,
-a README-consistency check and an upload of `eval/report.md`, all under `if: always()` so one run reports
-every failing signal instead of stopping at the first. It contains no secrets and no LLM step, so no CI
-run can ever spend money.
+CI runs `make check`, `make eval-retrieval`, a README-consistency check and an upload of
+`eval/report.md`, all under `if: always()` so one run reports every failing signal instead of stopping at
+the first. It contains no secrets and no LLM step, so no CI run can ever spend money.
 
-The two retrieval gates are now enforced **in the test suite as well as in the CLI**, and they fail.
-`make check` is red on `main` deliberately — see [Current numbers](#current-numbers-as-of-2026-11-09).
-The plan for making them green honestly is Stage 8.5 in the roadmap: tune the retriever, never the
-labels or the thresholds.
+**The badge was red for five stages, and that was not an accident.** From Stage 6 to Stage 10 both
+retrieval gates failed on `main`, and the repo stayed that way on purpose: the numbers in the README
+were a target the code had not reached, and nobody lowered the bar to close the gap. Stage 8.5 closed
+it from the only direction allowed — **one change to the analyser**, suffix folding in the tokenizer,
+with the golden labels, the metrics and both thresholds untouched — and the commit that made CI green
+says what it cost. That history is why the gates are worth reading now: a red badge that is never
+explained teaches nothing, but a red badge that turns green through a named, single-variable change
+teaches the whole method. See Stage 8.5 in [`ROADMAP.md`](ROADMAP.md).
 
 There **is** an HTTP service now: `make serve` runs `GET /health`, `POST /search` and `POST /ask`.
 Every response below was pasted from a real `curl` against a real `make serve` on this commit, and the
@@ -54,7 +56,7 @@ $ curl -s localhost:8000/health
 {"status":"ok","version":"0.1.0","chunk_count":64,"mode":"stub"}
 
 $ curl -s -X POST localhost:8000/search -H 'content-type: application/json' -d '{"query":"how many requests per minute","k":1}'
-{"query":"how many requests per minute","k":1,"hits":[{"chunk_id":"rate_limits#3","doc_id":"rate_limits.md","title":"Rate limits — Handling 429 Too Many Requests","snippet":"`429 too_many_requests` means the key exceeded its per-minute budget. Retry with exponential backoff\nstarting at 2 seconds, doubling per attempt, at most 5 attempts, plus jitter of up to 500 millisec…","score":13.20236738298299}],"top_score":13.20236738298299}
+{"query":"how many requests per minute","k":1,"hits":[{"chunk_id":"rate_limits#3","doc_id":"rate_limits.md","title":"Rate limits — Handling 429 Too Many Requests","snippet":"`429 too_many_requests` means the key exceeded its per-minute budget. Retry with exponential backoff\nstarting at 2 seconds, doubling per attempt, at most 5 attempts, plus jitter of up to 500 millisec…","score":10.622093619866167}],"top_score":10.622093619866167}
 
 $ curl -s -X POST localhost:8000/ask -H 'content-type: application/json' -d '{"query":"how long is the refund window","k":1}'
 {"query":"how long is the refund window","k":1,"answer":"No answer generated: the answerer is disabled because LLM_API_KEY is empty (mode='stub'). Retrieval ran normally and the retrieved chunk ids are listed in this response, but stub mode does not produce answer text. Configure LLM_API_KEY to enable live generation.","citations":[],"context_chunk_ids":["refunds#1"],"abstained":true,"mode":"stub","prompt_version":"v1"}
@@ -84,7 +86,7 @@ makes a real request or depends on one.
 
 ```bash
 make install          # uv if available, else python3 -m venv + pip; installs runtime + dev deps
-make check            # ruff + mypy --strict + pytest  (88 tests, no network, no LLM)
+make check            # ruff + mypy --strict + pytest  (96 tests, no network, no LLM)
 make eval-retrieval   # scores eval/golden.jsonl, rewrites eval/report.md, gates on the normal bucket
 ```
 
@@ -129,18 +131,19 @@ Verbatim from [`eval/report.md`](eval/report.md), produced by the command in the
 against 12 documents / 64 chunks and 30 cases (18 `normal`, 6 `ambiguous`, 6 `abstention`).
 
 ```text
-recall@5 over normal (18 cases): 0.7778 >= 0.80 FAIL
-mrr over normal (18 cases): 0.6713 >= 0.70 FAIL
+recall@5 over normal (18 cases): 0.8333 >= 0.80 PASS
+mrr over normal (18 cases): 0.7269 >= 0.70 PASS
 ```
 
-The same two figures now fail as pytest assertions in `tests/test_retrieval.py`, which is why
-`make check` is red: `2 failed, 68 passed`. A third test in that file is the tripwire — green, because
-it asserts that the harness **notices** when a corpus document disappears (dropping `webhooks.md` flips
-one passing case to failing).
+Those two figures are also pytest assertions in `tests/test_retrieval.py`, and they were **failing here
+for five stages** — Stage 8.5 moved them past the bar by changing the analyser and nothing else (see
+[What Stage 8.5 changed](#what-stage-85-changed)). The whole suite is `pytest (96 tests, 0 failures)`;
+a third test in that file is the tripwire — green, because it asserts that the harness **notices** when a
+corpus document disappears (dropping `webhooks.md` flips one passing case to failing).
 
 | bucket | cases | pass | Recall@5 | Precision@5 | MRR | nDCG@5 |
 | --- | --- | --- | --- | --- | --- | --- |
-| **normal (gated)** | 18 | 14/18 | **0.7778** | 0.1556 | **0.6713** | 0.6979 |
+| **normal (gated)** | 18 | 15/18 | **0.8333** | 0.1667 | **0.7269** | 0.7534 |
 | ambiguous | 6 | 6/6 | 1.0000 | 0.4000 | 1.0000 | 1.0000 |
 | abstention | 6 | n/a | n/a (0/6) | n/a (0/6) | 0.0000 (6/6) | n/a (0/6) |
 
@@ -152,15 +155,51 @@ when you add cases, not when the retriever changes.
 Two findings worth more than the scores:
 
 - **No raw-score threshold separates "not in the corpus" from "here is the answer".** The 6 abstention
-  queries score **4.4589–7.2278**; the answerable normal queries score **4.5290–16.5259**. The ranges
+  queries score **4.3303–9.2034**; the answerable normal queries score **4.5297–20.0727**. The ranges
   overlap, and the cheapest threshold that would cover all six abstentions removes the answer from
-  **7 of 18** normal cases. The sweep recomputes recall on the truncated list precisely so that this
-  cost is visible next to the benefit.
+  **10 of 18** normal cases. The sweep recomputes recall on the truncated list precisely so that this
+  cost is visible next to the benefit. Stage 8.5 made this finding *stronger*, not weaker: before the
+  analyser changed, that same cut cost 7 of 18.
 - **`k` trades recall for precision, visibly.** Raise `k` and more normal cases pass — but Precision@k
   falls faster than Recall@k climbs, so a report that quotes only recall gets better while the system
   gets noisier. Reproduce it with `--k 1` and `--k 10` against the command above. Deliberately, the
   figures from those runs are **not** quoted here: every metric number in this file appears verbatim in
   `eval/report.md`, which records only the shipped `k=5`.
+
+## What Stage 8.5 changed
+
+One commit, one variable: `tokenize()` in `src/lumen/retrieval.py` now folds regular English
+inflections (`locked`/`locking`/`locks` → `lock`, `policies` → `policy`) before BM25 ever sees a term.
+Nothing else moved — not the golden labels, not `metrics.py`, not the two thresholds, not `k1`, `b`, the
+stopword list, or the chunker. The rules are a pure function of a single token: they never read the
+corpus, the query or the golden set, which is what stops them becoming a lookup table for the eval data.
+
+| | before | after |
+| --- | --- | --- |
+| Recall@5 over `normal` | gate failing | **0.8333** |
+| MRR over `normal` | gate failing | **0.7269** |
+| nDCG@5 over `normal` | lower | 0.7534 |
+| Precision@5 over `normal` | lower | 0.1667 |
+| `normal` cases passing | 14/18 | 15/18 |
+| `ambiguous` bucket | 1.0000 | 1.0000 (untouched) |
+| `"account gets locked"` probe | 0 candidates | 3, led by `auth#4` |
+
+The honest shape of that table: **one case flipped and zero regressed** (`n-002`, whose paraphrase
+``blocked`` now meets the corpus's ``lock``). Recall moved by exactly one case in eighteen, because
+per-case recall is a fraction. Three normal cases still miss (`n-007`, `n-015`, `n-016`),
+each retrieving a confident wrong document, and they are the interesting part of this repo now.
+
+What the change costs, stated rather than buried: it merges some things it should not. `handling` and
+`handled` become the term `handl`, which never meets `handle`, because restoring a dropped silent `e`
+needs a dictionary this repo does not have. `too_many_requests` folds inside the underscore-joined
+identifier. `make`, `making` and `made` stay three separate terms. Each of those is pinned by a test so
+the behaviour is a decision, not an accident — the design deliberately prefers **splitting a word family
+over merging two unrelated words**.
+
+And the guard against overfitting was procedural, not aspirational: every rule had to be justified by an
+English generalisation that could be stated to someone who had never seen the golden set. Rules were
+considered and refused because their only merit would have been a named case. `eval/golden.jsonl` is
+byte-identical to the file written before any tuning existed.
 
 ## How to run the generation eval
 
@@ -177,7 +216,8 @@ Three rules this repo holds itself to, because they are what makes the numbers m
 1. **`eval/golden.jsonl` was written before any chunker or BM25 tuning existed**, by hand, from the
    corpus documents. The labels are not fitted to the ranker, so a miss is a real miss.
 2. **Never edit `golden.jsonl`, `eval/metrics.py`, or a threshold to make a check pass.** If a gate
-   fails, the thing to change is the retriever. The two failing gates above were committed failing.
+   fails, the thing to change is the retriever. The two gates above spent five stages committed
+   *failing*, and when they finally passed it was because the analyser changed — see Stage 8.5.
 3. **No paid LLM call from tests or `make check`.** Anything that costs money or touches the network
    is gated behind an explicit key and stays out of CI.
 
@@ -191,7 +231,12 @@ single metric is computed.
 src/lumen/
   corpus/            12 fictional API documents (the only knowledge the system has)
   chunking.py        markdown -> chunks, heading-aware, ids like `rate_limits#1`
-  retrieval.py       BM25 (k1=1.5, b=0.75), inverted index, title repetition x2
+  retrieval.py       BM25 (k1=1.5, b=0.75), suffix-folding tokenizer, inverted index, title rep. x2
+  config.py          the only module in the package that reads the environment
+  schemas.py         request/response bodies; `k` validated at the boundary
+  prompts.py         the answer prompt, versioned (`prompt_version` ships with every answer)
+  generation.py      the answerer: stub without `LLM_API_KEY`, one plain POST with it
+  main.py            FastAPI app: `GET /health`, `POST /search`, `POST /ask`
 eval/
   golden.jsonl       30 hand-labelled cases: 18 normal / 6 ambiguous / 6 abstention
   metrics.py         recall@k, precision@k, reciprocal rank, nDCG@k, abstention-safe means
@@ -202,7 +247,7 @@ eval/
 AGENT.md             the working agreement for agents working in this repo
 .github/workflows/   CI: make check, make eval-retrieval, a README-consistency check, report upload
 ROADMAP.md           stage-by-stage plan, decisions recorded as they were made
-docs/agent-dossier.md  thirteen agent runs, ten incidents, and what each one cost
+docs/agent-dossier.md  fourteen agent runs, thirteen incidents, and what each one cost
 ```
 
 Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` covers `src/`.
@@ -212,16 +257,17 @@ Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` c
 - **The corpus is fiction, written to be evaluated.** Twelve invented documents about a company that
   does not exist. "Lumen", its limits, its refund policy and its outage window are all made up so that
   nothing here can leak anything real.
-- **The retrieval baseline is untuned.** BM25 with stock parameters, a hand-picked stopword list, and
-  no stemming. It was not optimised against the golden set, and the failing gates describe it as it is.
-- **The golden set never exercises the zero-candidate path.** BM25 here is lexical and unstemmed, so a
-  plain paraphrase can retrieve nothing at all: measured on this commit, `"what happens when my account
-  gets locked"` shares 0 of its 4 tokens with the corpus vocabulary and returns 0 hits, while the corpus
-  phrases the same fact as "five failed attempts … lock the API key". Meanwhile **0 of the 30 golden
-  cases return zero hits**, so the gates can watch ranking quality and never see the service failing to
-  find anything. Recall@5 `0.7778` is therefore a statement about ordering among candidates, not about
-  whether candidates exist — and 28 of the 30 golden queries still carry at least one out-of-vocabulary
-  term (about half their tokens on average), which is why the numbers move under rephrasing.
+- **The retriever is tuned once, and only once.** BM25 still runs with stock `k1`/`b`, a hand-picked
+  stopword list and no lemmatisation; the single change made so far is the suffix folding described in
+  [What Stage 8.5 changed](#what-stage-85-changed). There is no tuning loop here and no parameter was
+  ever moved to chase a gate — which is the reason the passing gates mean something.
+- **The golden set still never exercises the zero-candidate path.** Stage 7 measured that a plain
+  paraphrase could retrieve nothing at all; Stage 8.5 fixed that particular query (`"what happens when my
+  account gets locked"` now returns 3 candidates, led by `auth#4`). But **0 of the 30 golden cases
+  retrieve zero candidates, before or after** — so nothing in this repo would notice if a future change
+  re-broke it. Recall@5 is a statement about ordering among candidates, not about whether candidates
+  exist, and the dataset is the reason that distinction is invisible. 28 of the 30 golden queries carry
+  out-of-vocabulary terms, which is why the numbers still move under rephrasing.
 - **Ambiguity is synthetic.** The US/Brazil document pairs collide on purpose to give the eval a case
   type most RAG demos skip. Real-world ambiguity is messier than 6 cases.
 - **Thresholds were chosen before the first run**, at 0.80 / 0.70, and are a contract rather than an
