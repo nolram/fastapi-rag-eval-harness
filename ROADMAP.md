@@ -1,9 +1,11 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–10 complete, plus Stage 8.5** (bootstrap, corpus, chunker, BM25 retrieval,
+**Status: Stages 0–11 complete, plus Stage 8.5** (bootstrap, corpus, chunker, BM25 retrieval,
 `golden.jsonl`, metrics, retrieval eval harness, README + agent dossier, quality gates, CI, AGENT.md,
-the FastAPI service, one honest retriever tuning pass). Stage 11 (the gated generation eval) is next.
-**`make check` is currently RED by design** — the two Stage 8 gates fail on the present retriever.
+the FastAPI service, one honest retriever tuning pass, the LLM-as-judge generation eval). Stage 12
+(ADRs + study guide + README finalisation) is next. **`make check` has been green since Stage 8.5** —
+the two Stage 8 gates failed on purpose from Stage 8 until the one-variable tuning pass made them
+pass by fixing a real defect, not by moving them.
 Implementation was delegated stage-by-stage to subagents and reviewed by the parent before committing;
 each stage's gate is recorded below.
 
@@ -339,9 +341,12 @@ Deferred by the operator at Stage 8, recorded here so it was not lost, executed 
   was checked before being written and the child pasted the three `tests/` hits, explaining why they are
   allowed rather than hiding them.
 - Every 4-decimal figure the file quotes is present in the committed `eval/report.md` — including the
-  score ranges `4.4589–7.2278` vs `4.5290–16.5259`, which the child **recomputed from the harness**
-  rather than inheriting the two-decimal version in `ROADMAP.md`. The blended "vanity" figure in the bad
-  example (`0.83`) is not a hypothetical: `eval/report.md` line 34 prints `recall@5 0.8333`.
+  score ranges `4.4589–7.2278` vs `4.5290–16.5259` (**the bands as they stood before Stage 8.5**; the
+  current sweep in `eval/report.md` reads `4.3303–9.2034` vs `4.5297–20.0727`), which the child
+  **recomputed from the harness** rather than inheriting the two-decimal version in `ROADMAP.md`. The
+  blended "vanity" figure in the bad example (`0.83`) is not a hypothetical: `eval/report.md` line 34
+  prints `recall@5 0.8333` — which is now the *`normal`* bucket's figure, and the blended line has
+  moved to `0.8750`; quote the bucket name or the coincidence misleads.
 - Claims I re-measured rather than trusted: `make eval-generation` really fails with
   `No module named eval.generation_eval`; `make serve` really dies with `Error loading ASGI app. Could not
   import module "lumen.main"`; the harness really exits `2` on an invented chunk id, an emptied
@@ -360,18 +365,24 @@ Deferred by the operator at Stage 8, recorded here so it was not lost, executed 
   dependencies (copied from `ROADMAP.md`); `pyproject.toml` lists five. The child wrote five, and logged
   my error as a worked example under *When to stop and ask*.
 
-## Stage 11 — Gated LLM-as-judge generation eval
+## Stage 11 — LLM-as-judge generation eval (**measurement, not a gate**)
 
-- `eval/generation_eval.py`: exits 0 with `skipped: no LLM_API_KEY` when key absent.
-  Strict JSON rubric `{groundedness, citation_correct, complete, abstained_correctly, verdict, rationale}`;
-  `temperature=0`; `model` + `PROMPT_VERSION` recorded in `eval/report.md`.
-- Judge prompt forbids external knowledge; grades only against `expected_chunk_ids` /
-  `must_include` / `should_abstain`.
-- `--calibrate` vs `eval/calibration/labels.csv` (20 rows `case_id,human_verdict,notes`, with real
-  human-style justification in `notes`) → prints agreement rate; document that below an acceptable
-  agreement the judge is **telemetry, not a gate**.
-- Gate: runs offline-safe (skip path) and rubric schema is validated.
-- Commit: `eval: gated llm-as-judge generation eval with calibration`
+Planned at Stage 0, from the task prompt, as "**Gated** LLM-as-judge generation eval" with a
+six-field rubric and a separate `eval/calibration/labels.csv`. Executed differently, and the
+differences are the point:
+
+| planned | built | why |
+| --- | --- | --- |
+| a gate on judge scores | **no `--min-*` flag anywhere in the file** | Fixing a threshold before seeing the distribution is the anti-pattern `AGENT.md` records as I5. Stage 8.5 is the standing proof that a threshold can only be argued from a measured distribution. |
+| rubric `{groundedness, citation_correct, complete, abstained_correctly, verdict, rationale}` | `{supported, should_have_refused, reason}`, exactly three keys, enforced | A reasoning model asked for six numeric fields produced six confident numbers about one short answer. Two of them are the questions this repo can actually defend asking: is this answer supported by that context, and should this question have been refused. Anything else was decoration. |
+| `eval/calibration/labels.csv`, 20 rows of human verdicts | calibration against the labels already in `eval/golden.jsonl` | `must_include` / `must_not_include` / `should_abstain` were hand-written before any ranker ran (audited), so they are already the independent human signal. A second hand-label file would be a second place for the same opinion to rot. `eval/calibration/` does not exist and `--calibrate` is not a flag. |
+| generation figures into `eval/report.md` | `eval/generation_report.md` | `eval/report.md` is the retrieval artefact the README quotes and the README-vs-report CI check compares against. Two measurements, two artefacts, one provenance each. |
+| `temperature=0`, `max_tokens` cap | `temperature=0`, **no** `max_tokens` | The endpoint is a reasoning model: a cap truncates the reasoning into `content: ""` with `finish_reason: length`, which a strict parser then miscounts as a judge's opinion rather than a transport hole. |
+
+- **Gate that was kept:** the skip path must be safe — no key, exit `0`, no file written, no socket.
+  Verified on three machines' worth of conditions: locally, by the test suite under a network
+  tripwire, and by CI, which runs `make eval-generation` on every push with no secret available.
+- Commit: `eval: llm-as-judge generation eval, measurement only`
 
 ## Stage 12 — ADRs, study guide, README (with real numbers only)
 
@@ -418,7 +429,15 @@ Deferred by the operator at Stage 8, recorded here so it was not lost, executed 
 2. **Dependencies** (Stage 0): approve `fastapi, uvicorn, pydantic, pydantic-settings, httpx`
    (runtime) + `pytest, ruff, mypy` (dev)? `httpx` is needed for `TestClient` and the judge call.
 3. **LLM judge provider/model** for Stage 11 — and do you want it actually executed, or only the
-   gated skip path + calibration harness (no key used in CI)?
+   gated skip path + calibration harness (no key used in CI)? — **answered:** the operator supplied a
+   self-hosted OpenAI-compatible endpoint and asked for the eval to be executed for real, with the key
+   held in the environment and never in the repo. CI keeps no secret, so CI takes the skip path forever.
 4. **Prompt gap**: §3's tree omits `eval/calibration/`, but §6 requires `eval/calibration/labels.csv`
    → I'll add the directory (noted as divergence). §9 is truncated mid-sentence and §10 is missing.
 5. **Repo name/visibility**: `nolram/fastapi-rag-eval-harness`, public — confirm.
+6. **`n-018`'s `must_not_include` is disputed by the judge and the corpus** (Stage 11, open).
+   `at most 3 retries` is forbidden in the answer, but `idempotency#3` — third of the five chunks the
+   query retrieves — states *"Use at most 3 retries and reuse the same key for every attempt."* The
+   label appears to forbid a true sentence. Not edited: re-labelling because a model disagreed is how a
+   golden set becomes a mirror. **Needs a human decision**, and it is the reason the breach-calibration
+   denominator is one case and suspect.

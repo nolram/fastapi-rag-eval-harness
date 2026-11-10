@@ -47,8 +47,10 @@ Durations are the harness-recorded wall-clock of each child run, read from its `
 | 12 | 10 — `AGENT.md` | `6897d047` | 13 m 48 s | complete |
 | 13 | 7 — FastAPI service | `c41389e1` | 28 m 34 s | complete, **1 m 26 s from the timeout** |
 | 14 | 8.5 — suffix folding | `ddbd720d` | **30 m 00 s** | **timed out mid-edit; parent finished the work** |
+| 15 | 11 — generation eval | `e416c7ba` | **30 m 00 s** | **timed out; module complete (1077 lines, live-tested), its tests unwritten** |
+| 16 | 11 — generation tests | `ed2fccac` | **30 m 00 s** | **timed out; 44 tests landed, 6 of the 10 briefed areas unwritten; parent finished** |
 
-**Total delegated time: 4 h 1 m. Of that, 90 m — 37% — went into three runs that timed out.** The single
+**Total delegated time: 5 h 1 m. Of that, 150 m — 50% — went into five runs that timed out.** The single
 fastest child in the build (6 m 45 s) did its job on the first try, and it is the one
 whose brief named exactly one file it was allowed to write. Stage 8 was written to that same rule — one
 file, one marker, expected-red — and cleared in one attempt.
@@ -64,6 +66,19 @@ about a shared tree generates round-trips; the round-trips cost wall-clock; the 
 The lesson is not "let the child decide". Run 14 was right to ask, and the parent still finished the
 work by hand. The lesson is that a stage needing judgement in a shared tree should be budgeted as two
 runs, or run by the parent.
+
+Runs 15 and 16 tested that revised lesson and mostly disproved it. Both briefs were small in *files*
+(one module; one test file) and both hit the ceiling. What they had in common was **volume inside the
+file**: run 15 produced 1077 working lines, run 16 produced 683. Run 16 also had ten numbered coverage
+areas in its brief, and delivered four of them — and the six it never reached were the ones I cared
+most about (the skip path, the anti-blending proof, calibration, report determinism), because they sit
+at the end of a file and the clock ran out where files end. It also left 19 unused imports behind, which
+is the fossil record of tests it intended to write and did not.
+
+So the budgeting unit is neither stage size nor file count: it is **roughly a thousand lines of
+reviewed output per 30-minute child**. Past that, split by *section* and dispatch twice — and if the
+file has a natural priority order, say so in the brief, because a child that dies at the end of the
+file dies having written the parts it was told about first, not the parts the parent needed most.
 
 ## Incidents
 
@@ -311,6 +326,93 @@ needs a line it can only print when it has actually looked.
 comparison this stage wanted was never made; `ROADMAP.md`, Stage 8.5 narrows the cross-machine claim to
 what `gh run list` actually supports.
 
+### I15 — the harness reported its own missing two thirds, and that is what found the bug
+
+**What happened.** The first live full run of the generation eval answered **10 of 30 cases** and exited
+`0`. Twenty cases carried a `GenerationUnavailable`, the report named every one of them by id, and the
+run finished as if nothing unusual had happened. Nothing pointed at the cause. What pointed at the cause
+was the shape of the ids: `n-005` through `n-014`, contiguous, with `n-015` and `n-017` fine afterwards.
+Content-dependent failures do not cluster by file order. A replay of one of them on its own came back in
+`20.1 s` — `lumen.generation.REQUEST_TIMEOUT_SECONDS` was `20.0`, and the endpoint is a reasoning model.
+
+**The measurement that turned it into a decision.** Replaying 10 of the same prompts with the ceiling
+removed: min 3.8 s, median 35.2 s, mean 47.4 s, p80 76.0 s, max 134.7 s, 6 of 10 over 20 s. One case
+spent 5515 completion tokens reasoning about a rate limit. That is the entire justification now written
+above the constant, which moved to `120.0`: not "make the timeout bigger so CI is green", but a ceiling
+chosen from a distribution, with the fraction it still truncates stated.
+
+**What it taught.** Two things, and the second is the uncomfortable one. First: a per-case `try` that
+degrades a provider failure into a named hole is not politeness — it is the reason the failure was
+legible at all, because it preserved the *pattern* of failures instead of replacing it with one
+traceback and a dead process. Second: an exit code of `0` with 20 of 30 cases unanswered is I14 wearing
+different clothes. A check that runs nothing and a run that measures a third of its cases both produce a
+success status, and in both cases the number next to the status is the only thing that tells you. The
+report's habit of printing `(measured/total)` after every mean is what made this visible without anyone
+reading the per-case table.
+
+### I16 — the judge template died on its first real call, and no test had ever run it
+
+**What happened.** `JUDGE_TEMPLATE` contains an example of the JSON the judge must return:
+`{"supported": true, ...}`. The template is rendered with `str.format`, which read those braces as a
+replacement field and raised `KeyError: '"supported"'` — on the first live call, in the only code path
+that had never been executed, because every test up to that moment had exercised the parser and none had
+exercised the *prompt builder*.
+
+**What it taught.** The fix is trivial (`{{...}}`) and is now asserted: a test builds the prompt and
+asserts the example survives, and another asserts a braces-bearing answer cannot break it. What is worth
+keeping is the shape of the miss. The module had 1077 lines, its parser was heavily tested, and the bug
+sat in the one function whose output goes to a machine that charges for a mistake. A mock transport that
+is only ever handed *canned replies* tests the code that reads responses and leaves the code that writes
+requests untested. Every seam needs both directions exercised, or the untested half is exactly the half
+that talks to the world.
+
+### I17 — two more single-file briefs, two more 30-minute ceilings
+
+**What happened.** Runs 15 and 16 (above, in the ledger note): one file each, both hit the ceiling, both
+leaving the parent to finish. Run 16 delivered 44 tests and left six of its ten briefed coverage areas
+unwritten, plus 19 imports it had planned to use.
+
+**What it taught.** The correction to the rule is in the ledger note rather than here, so this entry
+records the cost honestly instead: of the 60 minutes these two children spent, none of it was wasted —
+run 15's module ran live and run 16's 44 tests all pass — but the parent still wrote the four tests that
+mattered, so the stage's *review* cost was not reduced by delegation at all. The honest framing of those
+two hours is "the work got done by a pair", not "the work got done twice".
+
+### I18 — I asserted the report I had briefed, not the report that existed
+
+**What happened.** Writing the four missing tests by hand, I filed four assertions against what the
+module *should* say from my own brief, and the module, which had already been running live for an hour,
+disagreed three times over: it says `**Nothing in this file is a gate.**` and not the "no threshold is
+asserted here" I had written; it counts an unanswered case as a judge error too, with a reason string
+saying there is nothing to grade, where I asserted `judge is None`; and my "no absolute path" assertion
+failed because *I had passed it an absolute path*, which it faithfully printed.
+
+The fourth was self-inflicted in a different way: I put `block_network()` in a test that also installs an
+`httpx.MockTransport`, and the tripwire blocked the mock — it patches `httpx.Client.post`, which is the
+method a mocked client dispatches through. The isolation guard and the fake transport are not
+stackable, which is not obvious from either file's name.
+
+**What it taught.** The three content misses are one habit: after writing a brief that describes an
+artefact, the artefact stops being evidence and the brief becomes it. Each assertion was fixed by reading
+what the renderer actually emits, and each of those readings improved the sentence in the report — the
+overlap between answer errors and judge errors, for instance, is now stated in the report *because* my
+wrong assertion forced me to look at why the ids coincide. And the general form of the mock/tripwire
+collision is worth remembering on its own: a guard that blocks the transport layer blocks every
+transport, including the one you are pretending to have.
+
+### I19 — "red by design" outlived the green by three commits
+
+**What happened.** `ROADMAP.md` opened with **"`make check` is currently RED by design"**. Stage 8.5 made
+it green, was committed, pushed, and re-documented in four other files — and the status line stayed
+wrong until Stage 11's doc pass noticed it. A reader arriving from the README badge (green) into the
+planning document (deliberately red) would have concluded the repo was lying about one of the two.
+
+**What it taught.** This is I4 with a longer fuse. A claim about *current state* has a half-life equal to
+the interval between state changes, and Stage 8.5 was the first state change large enough to expose how
+many files carried the old one. The fix is not more diligence — it is the same rule as everywhere else
+in this file: prefer the sentence that names the command to the sentence that states the result, so the
+reader runs `make check` instead of trusting me.
+
 ## What the briefs said
 
 A child receives no chat history — only the brief, the repo, and its own reading. Briefs in this build
@@ -342,7 +444,7 @@ do".
   committed reports are the citable residue.
 - **My account of my own mistakes is self-reported.** I1's numbers, and I3, I4 and I7, come from me. What
   is independently checkable is in *Evidence* lines: `git log`, `make check`, the audits.
-- **Parent time is not measured.** Seven successful children, two deaths, and a fair amount of repair
+- **Parent time is not measured.** Eleven successful children, five deaths, and a fair amount of repair
   work happened against a human clock I never started.
 - **Four commits share one minute** (`17:12`: bootstrap, corpus, chunker, BM25). Commit granularity here
   is logical, not chronological: stages were reviewed and pushed together. Anyone reading the timeline as

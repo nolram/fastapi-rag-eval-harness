@@ -24,8 +24,8 @@ This repo is being built in public, stage by stage; [`ROADMAP.md`](ROADMAP.md) i
 
 | | |
 | --- | --- |
-| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` · **FastAPI `/search` + `/ask`** · **retriever tuning (Stage 8.5)** |
-| 🔜 Planned | LLM-as-judge generation eval (Stage 11) · ADRs + study guide (Stage 12) |
+| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` · **FastAPI `/search` + `/ask`** · **retriever tuning (Stage 8.5)** · **LLM-as-judge generation eval (Stage 11)** |
+| 🔜 Planned | ADRs + study guide (Stage 12) |
 
 CI runs `make check`, `make eval-retrieval`, a README-consistency check and an upload of
 `eval/report.md`, all under `if: always()` so one run reports every failing signal instead of stopping at
@@ -86,8 +86,9 @@ makes a real request or depends on one.
 
 ```bash
 make install          # uv if available, else python3 -m venv + pip; installs runtime + dev deps
-make check            # ruff + mypy --strict + pytest  (96 tests, no network, no LLM)
+make check            # ruff + mypy --strict + pytest  (140 tests, no network, no LLM)
 make eval-retrieval   # scores eval/golden.jsonl, rewrites eval/report.md, gates on the normal bucket
+make eval-generation  # with no LLM_API_KEY this prints one skip line and exits 0 — CI has no key
 ```
 
 **Both targets currently exit non-zero on `main`**, and that is the intended state of this commit: the
@@ -111,15 +112,15 @@ than the status. CI should gate on *non-zero* and read the verdict.
 Two evals, deliberately different, because they answer different questions at different prices. The
 retrieval eval exists so that the expensive one is the only thing that ever has to be argued about.
 
-| | Retrieval eval (`make eval-retrieval`) | Generation eval (planned, Stage 11) |
+| | Retrieval eval (`make eval-retrieval`) | Generation eval (`make eval-generation`) |
 | --- | --- | --- |
 | **Question** | Did the right chunk reach the prompt? | Was the answer grounded in what was retrieved? |
-| **Cost** | Free — pure Python, no API key | Paid — one LLM call per case |
-| **Frequency** | Every commit, in CI, blocking | On demand, and never blocking |
+| **Cost** | Free — pure Python, no API key | Paid — two LLM calls per case, one to answer and one to judge |
+| **Frequency** | Every commit, in CI, blocking | On demand, and never blocking; CI runs the target on every push and it skips, because CI holds no key |
 | **Reproducibility** | Byte-identical output, twice a day for a year | Stable-ish at `temperature=0`, still not reproducible |
 | **Ground truth** | 30 hand-labelled cases, written **before** any tuning | A model judging a model, calibrated against human labels |
 | **Verdict power** | **Gate.** Fails the build. | **Telemetry.** Informs a human; below calibrated agreement it is a number, not a decision. |
-| **Runtime** | Sub-second | Minutes, and it can rate-limit |
+| **Runtime** | Sub-second | Tens of minutes over 30 cases |
 
 The asymmetry is the point: the cheap deterministic judge carries the regression risk, so the
 probabilistic expensive judge never has to be trusted with a merge. `eval/metrics.py` and
@@ -137,7 +138,7 @@ mrr over normal (18 cases): 0.7269 >= 0.70 PASS
 
 Those two figures are also pytest assertions in `tests/test_retrieval.py`, and they were **failing here
 for five stages** — Stage 8.5 moved them past the bar by changing the analyser and nothing else (see
-[What Stage 8.5 changed](#what-stage-85-changed)). The whole suite is `pytest (96 tests, 0 failures)`;
+[What Stage 8.5 changed](#what-stage-85-changed)). The whole suite is `pytest (140 tests, 0 failures)`;
 a third test in that file is the tripwire — green, because it asserts that the harness **notices** when a
 corpus document disappears (dropping `webhooks.md` flips one passing case to failing).
 
@@ -203,11 +204,26 @@ byte-identical to the file written before any tuning existed.
 
 ## How to run the generation eval
 
-**It does not exist yet** (Stage 11). `make eval-generation` is wired to `python -m eval.generation_eval`,
-and that module is not in the repo, so the target currently fails with
-`No module named eval.generation_eval` rather than doing nothing. When Stage 11 lands it will require
-`LLM_API_KEY`; without the key it will exit 0 printing `skipped: no LLM_API_KEY` rather than failing, so
-CI never needs a secret and no test ever spends money.
+```bash
+LLM_API_KEY=… make eval-generation                                  # all 30 cases, tens of minutes
+LLM_API_KEY=… .venv/bin/python -m eval.generation_eval --limit 3    # a smoke run, one case per bucket
+```
+
+It answers every golden case through the same `lumen.generation.answer()` that `/ask` calls, measures
+what is measurable without a model (`must_include` coverage, `must_not_include` violations, abstention
+match, citation integrity — all per bucket, never blended), and then asks a judge exactly two questions
+about each answer: `supported`, and `should_have_refused`. **It carries no threshold of any kind** — no
+`--min-*` flag, no PASS/FAIL, and no exit code for an ugly number. What it prints instead is a
+calibration section against the human labels, with every disagreement listed by case id, because a
+judge's agreement rate is only as good as the disagreements you read.
+
+**With no `LLM_API_KEY` it prints `skipped: no LLM_API_KEY`, writes no file, and exits `0`** — that is
+the path CI takes, so the job is present on every push and spends nothing. Two properties worth knowing
+before you trust a run: the judge never sees a golden label, and by default `LLM_JUDGE_MODEL` is empty,
+which means the model that wrote the answer grades it, a bias the report prints in bold rather than
+footnoting. Set `LLM_JUDGE_MODEL` to a second model to make that an experiment instead of a confession.
+Everything is in [`eval/README.md`](eval/README.md); the numbers from the last real run are in
+[`eval/generation_report.md`](eval/generation_report.md).
 
 ## Discipline
 
@@ -273,9 +289,13 @@ Imports go one way: `eval` imports `lumen`, never the reverse. `mypy --strict` c
 - **Thresholds were chosen before the first run**, at 0.80 / 0.70, and are a contract rather than an
   empirical optimum. Changing them to fit the observed scores would turn the gate into a description of
   the current retriever.
-- **Generation quality is currently unmeasured.** Retrieval without a groundedness eval is half a
-  harness; Stage 11 supplies the other half, and until then nothing here says anything about whether
-  an answer was supported by its citations.
+- **Generation quality is measured and deliberately not gated.** `make eval-generation` says whether an
+  answer covered its `must_include` strings, broke a `must_not_include`, cited an id the retriever never
+  returned, and whether a judge thought the context supported it — but nothing fails a build on any of
+  it, because a threshold chosen before seeing the distribution would be a description of one model on
+  one day. Two things cap how far its numbers reach: the judge is the answering model itself unless
+  `LLM_JUDGE_MODEL` says otherwise, and the calibration denominators are hand-carved out of 30 cases —
+  six labelled `should_abstain`, and only the answers that actually broke a stated prohibition.
 - **The study guide and the ADRs are still to come** (Stage 12). They will be linked from here when
   they exist. [`AGENT.md`](AGENT.md) exists now, and its own §8 lists what it cannot enforce — read that
   section before treating it as a guarantee.

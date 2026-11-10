@@ -25,6 +25,12 @@ Each of these is checkable; run the command, do not assert the result.
   reads `LLM_API_KEY`, and the workflow has no `secrets.` reference. Check:
   `git grep -n "secrets\." -- .github` must print nothing. Adding the first one is a human edit to
   `.github/workflows/ci.yml`, never a side effect of a feature.
+  The boundary, stated exactly: `eval/generation_eval.py` is the only module in this repo that opens a
+  socket, and it opens one only when `LLM_API_KEY` is non-empty — with no key it prints one line and
+  exits `0`, which is the path CI takes. `tests/test_generation_eval.py` exercises every leg of it
+  through `httpx.MockTransport`, with a tripwire asserting no socket was opened. `LLM_JUDGE_MODEL`
+  (empty by default, meaning the answering model grades itself) selects which model the judge calls;
+  it does not change whether a call happens.
 - **`make eval-retrieval` stays networkless and cheap.** Measured on this checkout: `~0.05 s` wall
   (best of 3, `0.053 s`) for
   `.venv/bin/python -m eval.retrieval_eval --golden eval/golden.jsonl --k 5 --min-recall 0.80
@@ -54,11 +60,11 @@ Each of these is checkable; run the command, do not assert the result.
 | --- | --- | --- |
 | `src/lumen/` | chunker, BM25 (`k1=1.5`, `b=0.75`), `config.py`, `schemas.py`, `prompts.py`, `generation.py`, `main.py`, `py.typed` | `eval/`, `tests/`; it imports nothing in this repo but itself |
 | `src/lumen/corpus/` | the 12 fictional API documents — the only knowledge the system has, 64 chunks | package data read by `lumen.retrieval`; nothing imports it |
-| `eval/` | `golden.jsonl`, `metrics.py`, `retrieval_eval.py` (computes), `report.py` (renders), `report.md`, `README.md` | `tests/` only; `eval/` may import `lumen` |
+| `eval/` | `golden.jsonl`, `metrics.py`, `retrieval_eval.py` (computes), `report.py` (renders), `report.md`, `generation_eval.py` (answers + judges; the only module here that may open a socket, and only with a key), `generation_report.md`, `README.md` | `tests/` only; `eval/` may import `lumen` |
 | `tests/` | 70 pytest tests, including the two gate assertions and the corpus tripwire | nothing imports `tests/` |
 | `docs/agent-dossier.md` | the incident ledger of the build, append-only | prose; imports nothing |
 | `ROADMAP.md`, `README.md` | decisions as they were made; the front page with measured numbers | prose |
-| `.github/workflows/ci.yml` | enforcement: `make check`, `make eval-retrieval`, the README test-count diff, `eval/report.md` upload | the CI runner |
+| `.github/workflows/ci.yml` | enforcement: `make check`, `make eval-retrieval`, `make eval-generation` (skips: no key exists here), the README test-count diff, `eval/report.md` upload | the CI runner |
 | `Makefile`, `pyproject.toml` | nine targets; ruff at 100 columns; mypy strict over `src/` | humans and CI |
 
 There is **no top-level `corpus/` directory** (`ls corpus` → "No such file or directory"): the corpus
@@ -165,8 +171,11 @@ and not the paragraph around it.
   module directly. CI must gate on non-zero and read the printed verdict to tell a failed gate from a
   corrupt dataset — the repo raised this as a bug once and the bug was the expectation (I6).
 - **An LLM-as-judge score is a proxy, never a target.** Do not optimise a rubric number directly, and do
-  not let one block a merge. The generation eval does not exist yet: `make eval-generation` fails with
-  `No module named eval.generation_eval` (measured), which is a fact to state, not "a placeholder".
+  not let one block a merge. `make eval-generation` exists and ships **no threshold at all**: no `--min-*`
+  flag, no PASS/FAIL line, no exit code for a bad number (measured: `--help` lists no threshold, and a
+  full run over 30 cases exits `0`). Its value is the disagreement list and the denominators, not a
+  score to raise. Adding a gate to it is a human decision backed by a measured distribution — which is
+  exactly what `AGENT.md`'s I5 says not to do in advance.
 - **"Just add an abstention threshold" is a proposal that must first refute the measurement.** No
   raw-score threshold separates the classes: abstention `top_score`s span `4.3303–9.2034`, answerable
   normal spans `4.5297–20.0727`, and the cheapest cutoff covering all 6 abstentions (`t > 9.2034`)

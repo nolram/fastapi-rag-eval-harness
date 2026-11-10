@@ -1,8 +1,12 @@
-# `eval/` — the retrieval eval harness
+# `eval/` — the two eval harnesses
 
-Everything here is deterministic and offline: **no LLM, no network, no clock, no randomness**. The
-same checkout always produces byte-identical output, which is what makes the numbers quotable in the
-top-level README and safe to gate CI on.
+`eval/retrieval_eval.py` and everything it touches are deterministic and offline: **no LLM, no
+network, no clock, no randomness**. The same checkout always produces byte-identical output, which is
+what makes those numbers quotable in the top-level README and safe to gate CI on.
+
+`eval/generation_eval.py` is the one file in this directory that is allowed to open a socket, and it
+is the only one with no gate. Everything below about determinism and thresholds describes the
+retrieval harness; `## The generation eval` states what changes there.
 
 | file | role |
 | --- | --- |
@@ -10,7 +14,10 @@ top-level README and safe to gate CI on.
 | `metrics.py` | `recall_at_k`, `precision_at_k`, `reciprocal_rank`, `ndcg_at_k`, `mean_excluding_none`. Abstention-safe: an empty ground truth is `None`, never `0.0`. |
 | `retrieval_eval.py` | The CLI. Reads and validates `golden.jsonl`, scores every case with BM25 from `lumen.retrieval`, aggregates per case type, sweeps score thresholds, decides the gate verdicts. Computes; never formats. |
 | `report.py` | Renders an `EvalResult` to markdown. Formats; never computes. |
-| `report.md` | The rendered report, written by `--report`. Regenerate, never hand-edit. |
+| `report.md` | The rendered retrieval report, written by `--report`. Regenerate, never hand-edit. |
+| `generation_eval.py` | The second harness. Answers every golden case through `lumen.generation.answer()`, measures what is deterministic about the answer, and asks a judge two questions about it. **No threshold anywhere in the file.** |
+| `generation_report.md` | The rendered generation report, written by `--report`. A measurement of one run against one endpoint: regenerate, never hand-edit, never compare across models as if the model were a variable you forgot to change. |
+| `../tests/test_generation_eval.py` | Every HTTP leg of the generation harness is tested through `httpx.MockTransport`, with a network tripwire asserting no socket was opened. |
 
 ## Running it
 
@@ -149,3 +156,124 @@ gates now pass at `0.8333` / `0.7269` with **15/18** normal cases. One case flip
 regressed, and three still miss — `n-007`, `n-015`, `n-016` — while all 6 ambiguous pairs are
 retrieved together. That is a BM25 recall problem on paraphrased queries, and it is the input to
 Stage 8, not a reason to move a threshold.
+
+---
+
+# The generation eval (`make eval-generation`)
+
+```bash
+make eval-generation                     # skipped, exit 0, nothing written — the CI shape
+LLM_API_KEY=… make eval-generation       # the real run: 30 cases, two calls each, many minutes
+LLM_API_KEY=… .venv/bin/python -m eval.generation_eval --limit 3   # one case per bucket
+```
+
+It answers every golden case through the same `lumen.generation.answer()` the service calls, then
+measures. Nothing it prints can fail a build.
+
+## What it measures, and with what
+
+**Deterministic, from the golden labels** — no judge, no model, no cost:
+
+- `must_include` coverage: the share of a case's required strings present in the answer,
+  case-insensitively. A case listing none yields `None` and leaves the denominator, which is the same
+  rule `metrics.py` enforces for retrieval. `(included/total)` travels with every mean so a reader can
+  see a denominator shrink.
+- `must_not_include` violations: the forbidden strings the answer actually contains, named.
+- `abstention match`: `answer.abstained == should_abstain`, per bucket, never blended.
+- Citation integrity: `cites_nothing` (answered, cited nothing — looks grounded, is not) and
+  `cited_but_not_retrieved` (cited an id the retriever never returned, which is an invention).
+
+**Judged** — one LLM call per answered case, answering two questions:
+`supported` (does the context support *this* answer) and `should_have_refused` (should *this question*
+have been refused). The rubric is exactly those two plus a `reason`; a reply that is not exactly
+`{supported, should_have_refused, reason}` with JSON booleans is a **judge error**: counted, named,
+removed from every judge denominator, and never re-counted as a `supported: false` verdict, because
+"the judge could not be read" is not a verdict.
+
+## The two things that make the judge numbers readable
+
+- **The judge never sees a golden label.** Its prompt carries the question, the retrieved context and
+  the candidate answer. `golden.jsonl` stays the only human signal, so judge and golden are two
+  measurements and the calibration section is where they meet.
+- **Self-preference bias is the default configuration.** `LLM_JUDGE_MODEL` is empty by default, which
+  means the model that wrote the answer grades it, and the report prints that fact in bold rather than
+  footnoting it. Set `LLM_JUDGE_MODEL` to a different model and the sentence changes — that variable is
+  the only lever that turns the confession into an experiment.
+
+Calibration compares the judge against the human labels in two places only, where the human label
+actually says something: the six `should_abstain` cases against `should_have_refused`, and the
+`normal` answers that broke one of their own `must_not_include` strings against `supported: false`.
+Every disagreement is printed as an id with both readings beside it. **A rate whose id list you have
+not read is a number, not a finding.**
+
+## Skip mode is the shape CI sees
+
+No `LLM_API_KEY` → one line naming the missing variable, exit `0`, **no report file written**. Exit `0`
+is a decision: the absence of an endpoint is not a failed measurement, and a red check on a machine
+that was never given a key trains people to ignore red. CI therefore runs `make eval-generation` on
+every push with no secret available — the step is present, and it skips, and that is the assertion.
+
+A golden-file error still exits `1`, and a bad `--k`/`--limit` exits `2`, exactly as the retrieval CLI
+behaves. There is no third code for "the numbers were bad", because there are no numbers that are bad.
+
+## What the first live run found, before it found anything about the answers
+
+The first full 30-case run measured **10 of 30 cases**. Twenty answers never arrived, and the harness
+reported them as named holes instead of crashing — which is the only reason the cause was findable.
+
+The cause was in the service, not the eval: `lumen.generation.REQUEST_TIMEOUT_SECONDS` was `20.0`. The
+endpoint is a reasoning model, and a 10-case uncapped sample of the same prompts measured min 3.8 s,
+median 35.2 s, mean 47.4 s, p80 76.0 s, max 134.7 s — one case spent 5515 completion tokens thinking
+about a rate limit. A 20-second ceiling truncated 6 of those 10. The constant is now `120.0`, with
+that sample written into `src/lumen/generation.py` as its justification, because the ceiling a caller
+can plan around is a design decision and 20.0 had never been measured against anything.
+
+Two lessons that generalise past this repo:
+
+- **A failing dependency should degrade a measurement, not end it.** A per-case `try` turned an
+  would-be traceback into a table where the shape of the failures — a contiguous id range, all at the
+  same elapsed time — named the bug in minutes.
+- **Check what your green run measured before you read what it concluded.** An exit `0` with 20 of 30
+  cases unanswered is the same trap as a check that passed because it ran nothing.
+
+## What the complete run found (30 of 30 cases answered)
+
+With the ceiling corrected, every case got an answer and a verdict: no answer errors, no judge errors.
+Three results are worth carrying forward.
+
+**The two harnesses agree on the same three cases, independently.** The generation eval found two
+`normal` answers that abstained when the label says they should not have: `n-007` and `n-015`. Those are
+two of the three cases the retrieval gate has been failing since Stage 6 — `n-007`, `n-015`, `n-016` —
+and the third, `n-016`, did answer and covered none of its required strings. Nothing in either harness
+knows about the other's numbers; they agree because the same root cause runs through both: the right
+chunk never reaches the prompt, so the model correctly declines to invent it. **That is the argument for
+running the cheap eval and the expensive one at the same time**, and it is the only cross-validation in
+this repo that was not designed as cross-validation.
+
+**One disagreement is probably a bug in the human label, and it stayed.** One `normal` answer contained
+one of its own `must_not_include` strings, so the human label says the answer is wrong. The judge said
+`supported: true` and quoted the retrieved context: `idempotency#3`, third of the five chunks offered
+for that query, states *"Use at most 3 retries and reuse the same key for every attempt."* The forbidden
+string for `n-018` is `at most 3 retries` — the label forbids a sentence the corpus actually says, on a
+query that retrieves it. The judge is the more likely of the two to be right.
+
+The label was not edited. `eval/golden.jsonl` is read-only for agents by rule, and re-labelling a case
+because a model disagreed with it is the exact move that turns a golden set into a mirror — so this is
+recorded as open debt for a human to settle, not fixed silently. What it establishes as a measurement
+lesson stands either way: **a string prohibition on a paraphrase-prone corpus can punish a true
+statement**, and the only reason this one surfaced is that the disagreement list prints the judge's
+reason next to the human label instead of collapsing both into a rate.
+
+### Technical debt this stage leaves open
+
+- **The `n-018` label is disputed and unresolved** (above). Until a human re-reads `idempotency#3`, one
+  of the calibration denominators is suspect.
+- **Calibration denominators are tiny by construction**: six `should_abstain` cases for the refusal
+  check, and one violated `must_not_include` for the breach check. The agreement figures describe this
+  run; they do not rank anything.
+- **The judge is the answering model** unless `LLM_JUDGE_MODEL` is set, so `supported: true` is not
+  evidence of correctness. Nothing in this repo has ever run the two-model comparison.
+- **`cited_but_not_retrieved` is `0` by construction** — citation extraction can only name ids that were
+  offered to it. The metric is a tripwire for a future change, not a present result.
+- **No second model, no baseline.** Every figure is one model on one day against one endpoint. There is
+  no comparison in the repo that would say whether any of it is good.
