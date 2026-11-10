@@ -8,7 +8,7 @@ directory the build happened in.
 - Repository: **<https://github.com/nolram/fastapi-rag-eval-harness>** — public, single branch `main`, no
   force pushes, no other user or organisation involved.
 - Acceptance commit for the measurement section: `4cf0c13`. The Stage 13 guard (`tests/test_ci_workflow.py`)
-  and this file land after it; the suite count moves from 143 to 150 with that commit, and every count here
+  and this file land after it; the suite count moves from 143 to 153 with that commit, and every count here
   says which side of it it was taken.
 - No API key, token or credential appears in any file, commit, log or CI artifact. The only key used during
   the build lived in the operator's `~/.pi/agent/models.json` and in a shell environment variable; the two

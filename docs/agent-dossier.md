@@ -584,9 +584,9 @@ arriving — a window long enough that I had already quoted its numbers elsewher
    of whoever flushed last. Write-target isolation assumes you know a child is finished; a timeout notice
    that arrives *late* breaks the assumption, and the harness gives no warning when a write is overwritten.
 3. *Shrink the verification loop, not the brief.* The child finished its deliverable and then spent its
-   remaining minutes re-running the whole 150-test suite twice, which is what the brief told it to do. At
-   this repo's size, "run `make check`" is no longer a cheap instruction; the next brief says run your own
-   test file, and hand back.
+   remaining minutes re-running the whole suite twice, which is what the brief told it to do. A 153-test
+   suite plus a 45-file lint pass is no longer a cheap instruction at this repo's size; the next brief says
+   run your own test file, and hand back.
 
 I did not retry a fourth time, and this time for the right reason: the deliverable already existed. The
 floor I take from this is that below roughly 150 lines of reviewed output, delegating is only worth it
