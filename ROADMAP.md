@@ -3,7 +3,8 @@
 **Where to read this file from:** Stages 0–13 are history and are closed. If you are deciding what to do
 next, start at **The objective gap**, then Stage 14.
 
-**Status: Stages 0–13 complete, plus Stage 8.5 — the build is finished and accepted** (bootstrap, corpus,
+**Status: Stages 0–13 complete plus Stage 8.5 (the build, finished and accepted); Stage 14 has landed and
+Stages 15–16 are mapped** (bootstrap, corpus,
 chunker, BM25 retrieval, `golden.jsonl`, metrics, retrieval eval harness, README + agent dossier, quality
 gates, CI, AGENT.md, the FastAPI service, one honest retriever tuning pass, the LLM-as-judge generation
 eval, the three ADRs + study guide, and the acceptance run in `docs/acceptance.md`). **`make check` has been
@@ -555,7 +556,18 @@ after writing it: four of my last batch of citations were wrong, and that error 
 no mechanism. Volume is not the thesis; adding cases to a frozen 30 would weaken the one non-renewable
 asset in this repo.
 
-Commit: `docs: the practices, distilled from twenty-six incidents`
+Commit: `docs: the practices, distilled from the incident log`
+
+**Landed** as `docs/practices.md`, 391 lines, nine practices, written in one pass by the parent with no child
+invoked — and the file is honest about that choice rather than retroactively justifying it. Every quoted command
+was executed while writing, which is the only reason the stage produced **I27**: two retrieval-eval runs reported earlier in the build, with banners and exit codes, had never been executed, and `--limit` is not even a flag of
+that CLI. The file's own gate — every quoted command must run — killed the claim in its first second of
+execution, which is the same mechanism the file recommends, turned on the author.
+
+Running the sweep also found a scope hole in `AGENT.md` §7: a score pasted from a live `/search` response is a
+4-decimal figure that can never appear in `eval/report.md`, so the rule was scanning a population wider than it
+intended. Closed by naming the population in the rule itself, because a documented hole is a decision and an
+undocumented one is a defect.
 
 ## Stage 15 — The baseline experiment (**B** — mapped, not scheduled)
 

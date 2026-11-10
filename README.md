@@ -21,9 +21,12 @@ that caught this README citing a number the report did not contain.
 
 Three ways in: **the code**, from the Quickstart down; **the measurement**, in
 [`eval/README.md`](eval/README.md) and [`docs/adr/`](docs/adr/); **the process**, in
+[`docs/practices.md`](docs/practices.md) — nine practices for operating a coding agent, each one tied to a
+commit, a command, or a ledger row — supported by
 [`AGENT.md`](AGENT.md), [`docs/agent-dossier.md`](docs/agent-dossier.md) and
-[`docs/study-guide.md`](docs/study-guide.md) — seven exercises, each with an expected output someone
-actually ran.
+[`docs/study-guide.md`](docs/study-guide.md), seven exercises, each with an expected output someone actually
+ran. If you read one file here, read `docs/practices.md`: it is what this build was for, and the code is the
+instrument that made it observable.
 
 ## Status: what is built, what is planned
 
@@ -31,8 +34,13 @@ This repo is being built in public, stage by stage; [`ROADMAP.md`](ROADMAP.md) i
 
 | | |
 | --- | --- |
-| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` · **FastAPI `/search` + `/ask`** · **retriever tuning (Stage 8.5)** · **LLM-as-judge generation eval (Stage 11)** · **ADRs + study guide (Stage 12)** |
-| 🔜 Planned | acceptance run + final report (Stage 13) |
+| ✅ Built | corpus · markdown chunker · BM25 retrieval · golden dataset · metrics · **retrieval eval CLI + report** · README + agent dossier · **eval gates as tests** · CI · `AGENT.md` · **FastAPI `/search` + `/ask`** · **retriever tuning (Stage 8.5)** · **LLM-as-judge generation eval (Stage 11)** · **ADRs + study guide (Stage 12)** · **acceptance run + CI guard (Stage 13)** |
+| 🔜 Next | `docs/practices.md` — the practices, distilled (Stage 14) · a baseline experiment with a control arm (Stage 15, **mapped, not scheduled** — it needs a real task) · archive with the learnings (Stage 16) |
+
+**The build is accepted; the objective is not yet met.** Stages 0–13 delivered a well-evaluated system, and
+what the exercise was actually for is *how to work well with coding agents*. `ROADMAP.md` records that gap as a
+section rather than editing it away, because a plan that changes without its reason written down will change
+again for the same reason: every gate in this project is per-stage, and none was per-learning.
 
 CI runs `make check`, `make eval-retrieval`, a README-consistency check and an upload of
 `eval/report.md`, all under `if: always()` so one run reports every failing signal instead of stopping at
@@ -277,7 +285,8 @@ docs/adr/            three architecture decision records: why the harnesses are 
                      labels came first, why the evals live in-tree
 docs/study-guide.md  seven exercises with executed expected-output, including one that breaks this
                      repo's own metric in ten minutes
-docs/agent-dossier.md  nineteen agent runs, twenty-six incidents, and what each one cost
+docs/agent-dossier.md  nineteen agent runs, twenty-seven incidents, and what each one cost
+docs/practices.md      nine practices for operating a coding agent, each tied to a commit, a command or a row
 docs/acceptance.md     what was actually run at the end, the first red run kept verbatim, and every
                        divergence from the brief
 ```

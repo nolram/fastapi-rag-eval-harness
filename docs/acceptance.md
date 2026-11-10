@@ -170,7 +170,8 @@ from the build record rather than from the prompt is itself the divergence in it
    Stage 8.5 (one tuning pass). 8.5 exists because leaving gates red forever would have made the gates
    decorative; it is scoped to one variable precisely so the improvement is attributable.
 3. **The dossier became a second thesis.** What began as a build log became the record of what it is like
-   to have agents build this: 19 delegated runs, 26 incidents, and the arithmetic in §7.
+   to have agents build this: 19 delegated runs, 26 incidents as of this run (the log keeps growing — count
+   them with `grep -c "^### I" docs/agent-dossier.md`), and the arithmetic in §7.
 4. **Gates are bucket-scoped.** The brief implied thresholds; it did not say over what. Blending the three
    case types would have produced a number that moves when the dataset is edited, so `--min-recall` and
    `--min-mrr` apply to `normal` only, and the bucket name is printed inside each gate line.

@@ -1,10 +1,16 @@
 # Study guide — seven exercises on keeping an LLM system honest
 
 This repo is a demonstration of eval discipline, not of volume: 12 fictional documents, 30 hand-labelled
-cases, two harnesses, and 21 recorded incidents. The fastest way to read it is to be wrong about it in a
-controlled way. Each exercise below is a small experiment with a predicted observation, and every
+cases, two harnesses, and an incident log that has grown with every stage — count it with
+`grep -c "^### I" docs/agent-dossier.md` rather than trusting a number written here, because a hardcoded count
+in a document about a growing file expires the day it is written. The fastest way to read it is to be wrong
+about it in a controlled way. Each exercise below is a small experiment with a predicted observation, and every
 prediction was produced by running the command on this checkout — not by reasoning about what the code
 *should* do. Where a prediction is surprising, that is the lesson, not a mistake in the exercise.
+
+For the practices these exercises teach, in imperative form and tied to their evidence, read
+[`docs/practices.md`](docs/practices.md) first or after — it is the same material, organised by what to do
+rather than by what happened.
 
 **What you need.** `make install`. No API key, no network, no LLM: all seven exercises run offline. Two of
 them read `eval/generation_report.md`, which is a committed record of a live run someone paid for

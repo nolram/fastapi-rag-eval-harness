@@ -203,9 +203,14 @@ and not the paragraph around it.
       was a digit about a moving object and expired the moment Stage 13 added tests (I26). Where nothing
       enforces the digit, write the shape — *a green summary line*, *one collection error per test module*
       — or the command that prints the digit.
-- [ ] Every 4-decimal figure in `README.md` appears **verbatim** in `eval/report.md`. Two figures were
-      once published there that were true measurements and simply not in the report — under this rule
-      they were ineligible anyway (I3).
+- [ ] Every 4-decimal figure in `README.md` **that is quoted from the retrieval eval** appears **verbatim** in
+      `eval/report.md`. Two figures were once published there that were true measurements and simply not in the
+      report — under this rule they were ineligible anyway (I3). **The population matters, and this rule does
+      not cover the whole regex:** a score pasted from a live `/search` response (for example
+      `10.622093619866167`, which appears in `README.md` under *The API*) can never appear in `eval/report.md`,
+      because it is a service output and not an eval output — the next bullet governs it. So a raw
+      `grep -oE '[0-9]+\.[0-9]{4}' README.md` sweep will report a false orphan there; run it with word
+      boundaries, as exercise 7 of `docs/study-guide.md` does, or state the population you are scanning (I27).
 - [ ] No `curl` example documents an endpoint that does not exist, and no pasted response is
       abbreviated. The service exists (`make serve`, `GET /health`, `POST /search`, `POST /ask`), so a
       README block must be pasted from a run of it — the JSON in `README.md` was captured at `k=1` with
@@ -281,6 +286,7 @@ Stop and report instead of proceeding when you notice any of:
 | Threshold tourism | Picking `LUMEN_ABSTAIN_THRESHOLD` by eye when the sweep says no raw cutoff separates the classes. | The sweep recomputes it every run: at the shipped `k1`/`b`, the cheapest cut covering all six abstentions refuses **10 of 18** answerable questions — and the constant silently re-tunes itself every time the corpus changes. |
 | A transcript standing in for a rule | Pasting a command's output into a document that states the rule. `AGENT.md` §3 pasted three `path:line:` pairs; Stage 11 added a test file, the real output became eight lines, and the block went on asserting three for two stages (I24). | The document that polices unmeasured claims becomes an unmeasured claim, and no CI step can see it. Paste the command; keep the output out unless it is stable across the changes the repo will plausibly make. |
 | Citation from memory | Attributing an incident to a lesson it does not contain — four fluent, wrong attributions in one draft study guide (I23). | Unlike a wrong number, a wrong citation looks verified: the reader opens the file, finds an unrelated story, and has no way to tell who is wrong. Read the document you are citing, in the same session. |
+| A run described from memory | Reporting an execution — banner, exit code, all of it — that was never performed. Two retrieval runs were narrated this way, and `--limit` is not even a flag of that CLI (I27). | The most dangerous class here, because it is the one no test can see: the narration is fluent, the exit-code semantics are correct, and the wording matches the harness. Put the command in the same breath as the claim, or write the claim as a hypothesis. |
 
 ---
 
