@@ -73,15 +73,23 @@ direction of imports — `eval/` may import `lumen`, and `src/lumen/` must never
 the library must not know the eval exists:
 
 ```console
-$ grep -rn "from eval\|import eval" src/ tests/ || echo "src and tests never import eval"
-tests/test_metrics.py:15:from eval.metrics import (
-tests/test_retrieval.py:14:from eval import report
-tests/test_retrieval.py:15:from eval.retrieval_eval import (
+$ grep -rn "from eval\|import eval" src/ ; echo "grep exit=$?"
+grep exit=1
+$ grep -rln "^from eval\|^import eval" tests/ --include='*.py' | sort
+tests/test_generation_eval.py
+tests/test_metrics.py
+tests/test_retrieval.py
 ```
 
-Read that output exactly: the three hits are all in `tests/`, which is allowed and intended — a test
-suite that cannot import the harness cannot assert on it. `src/` contributes zero hits. If a change ever
-adds a fourth line from `src/`, revert it.
+Read that output exactly: `src/` contributes nothing — exit `1` is grep's "no match", which **is** the
+rule. Three test files import the harness, which is allowed and intended: a suite that cannot import the
+harness cannot assert on it. If a change ever puts a hit under `src/`, revert it.
+
+The second command prints file names rather than the block pasting `path:line:` pairs that stood here
+until Stage 11. That snapshot listed three imports and was true the day it was written; adding
+`tests/test_generation_eval.py` made it false without touching the rule, and nobody noticed until an ADR
+re-ran the command (`docs/agent-dossier.md` I19 is this repo's name for that failure — a claim about
+current state outliving its state). Quote a command whose output is stable, or quote the command.
 
 ## 4. Conventions
 
@@ -265,7 +273,9 @@ Stop and report instead of proceeding when you notice any of:
 | Confident anomaly | "Exit code contract broken — `make` returned 2!" Reported before reading what `make` does with recipe status (I6). | A wrong bug report that lands in the roadmap and gets fixed by someone else's afternoon. |
 | Single-machine determinism | "Byte-identical output," proven on the machine that wrote the code (I8). | The claim is worthless until a second machine reproduces it — CI did, at the same four decimals. |
 | Number without provenance | Quoting a metric that no committed artifact carries (I3). | The reader re-runs the eval, finds nothing, and discounts every other figure beside it. |
-| Threshold tourism | Picking `LUMEN_ABSTAIN_THRESHOLD` by eye when the sweep says no raw cutoff separates the classes. | 7 of 18 answerable questions refused, and the constant silently re-tunes itself every time the corpus changes. |
+| Threshold tourism | Picking `LUMEN_ABSTAIN_THRESHOLD` by eye when the sweep says no raw cutoff separates the classes. | The sweep recomputes it every run: at the shipped `k1`/`b`, the cheapest cut covering all six abstentions refuses **10 of 18** answerable questions — and the constant silently re-tunes itself every time the corpus changes. |
+| A transcript standing in for a rule | Pasting a command's output into a document that states the rule. `AGENT.md` §3 pasted three `path:line:` pairs; Stage 11 added a test file, the real output became eight lines, and the block went on asserting three for two stages (I24). | The document that polices unmeasured claims becomes an unmeasured claim, and no CI step can see it. Paste the command; keep the output out unless it is stable across the changes the repo will plausibly make. |
+| Citation from memory | Attributing an incident to a lesson it does not contain — four fluent, wrong attributions in one draft study guide (I23). | Unlike a wrong number, a wrong citation looks verified: the reader opens the file, finds an unrelated story, and has no way to tell who is wrong. Read the document you are citing, in the same session. |
 
 ---
 
