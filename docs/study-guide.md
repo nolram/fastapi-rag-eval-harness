@@ -17,12 +17,13 @@ $ make check
 $ pytest -q
 ```
 
-The first prints `143 passed`. The second does not: it ends in
-`ModuleNotFoundError: No module named 'lumen'` and `5 errors during collection`. Both are correct.
-`make check` runs `.venv/bin/pytest`, which has the package installed; bare `pytest` is a different
-interpreter that does not. The red you just produced says nothing about the code and everything about how
-you invoked it. Every number in this guide is quoted from the runner that works, and the discipline of
-*checking which interpreter printed the result* is itself one of the things this repo learned slowly.
+The first ends with a green summary line: every collected test passed. The second does not — it ends in
+`ModuleNotFoundError: No module named 'lumen'` and one collection error per test module that imports the
+package. Both outputs are correct. `make check` runs `.venv/bin/pytest`, which has the package installed;
+bare `pytest` is a different interpreter that does not. The red you just produced says nothing about the
+code and everything about how you invoked it. Every number in this guide is quoted from the runner that
+works, and the discipline of *checking which interpreter printed the result* is itself one of the things
+this repo learned slowly.
 
 Two files are read-only for everyone, human or agent: `eval/golden.jsonl` (the labels) and
 `eval/metrics.py` (the ruler). `AGENT.md` §2 says so and explains why. No exercise here asks you to edit

@@ -51,10 +51,11 @@ Durations are the harness-recorded wall-clock of each child run, read from its `
 | 16 | 11 — generation tests | `ed2fccac` | **30 m 00 s** | **timed out; 44 tests landed, 6 of the 10 briefed areas unwritten; parent finished** |
 | 17 | 12 — three ADRs | `ce5ed871` | **30 m 00 s** | **timed out at the ceiling having written all three files (452 lines); the handoff was never produced** |
 | 18 | 12 — study guide | `e634e439` | **30 m 00 s** | **killed at teardown when the mission ceiling expired; zero bytes written; parent wrote the guide** |
+| 19 | 13 — CI workflow guard | `08bc9744` | **30 m 00 s** | **timed out in validation, 5 min AFTER writing the file (144 lines, 10 tests); the parent, having declared it dead without checking, wrote the same path and its version is the one that vanished** |
 
-**Total delegated time: 6 h 1 m. Of that, 210 m — 58.2% — went into seven runs that timed out**
-(`python3 -c 'print(361-301, 210/361)'` after adding the two Stage 12 ceilings to the 5 h 1 m that stood
-here before). The single
+**Total delegated time: 6 h 31 m. Of that, 240 m — 61.4% — went into eight runs that timed out**
+(`python3 -c 'print(150+90, 301+90, (150+90)/(301+90))'`: 5 h 1 m and five ceilings were what stood here
+before Stage 12, and runs 17, 18 and 19 add three more 30-minute ceilings to both numbers). The single
 fastest child in the build (6 m 45 s) did its job on the first try, and it is the one
 whose brief named exactly one file it was allowed to write. Stage 8 was written to that same rule — one
 file, one marker, expected-red — and cleared in one attempt.
@@ -541,6 +542,84 @@ the parent's work, and they are cheap: the instruction was one sentence, and it 
 and two green CI runs had missed. It also names the bar for anything pasted into an agreement: either the
 command's output is stable across the changes the repo will plausibly make, or the command goes in and the
 output stays out.
+
+### I25 — I sentenced a run to death without checking, and then wrote into the path it was about to write
+
+**What happened.** Run 19 (`08bc9744`) was briefed to add one file, `tests/test_ci_workflow.py`, 120–200
+lines, stdlib only, with every mitigation this dossier had produced: one write target, a budgeted READ
+FIRST, design decisions pre-set so the child could not relitigate them, tests in priority order, and a
+VALIDATION block whose literal output had to be pasted back.
+
+After what felt like the ceiling I announced — to the user, in prose, and into the ROADMAP — that the run
+had died with zero deliverables, "third consecutive loss", and wrote the file myself. Then the child's own
+completion notice arrived, with a different file: 144 lines, 10 tests, docstring within spec, suite green.
+The path is one path, and the version that survived was the child's. My 110 lines are gone.
+
+The metadata says what really happened. `process-terminal.json` records the run's terminal state at
+14:42:59. `tests/test_ci_workflow.py` has mtime 14:37:52 — **five minutes earlier**. The child wrote the
+file, ran its validation, and died in the last stretch; there was never a moment at which it had produced
+nothing. And the sentence I had written into the record was not an observation of a death, it was an
+expectation: three previous ceiling runs, two of them empty, and a strong prior about what the next one
+would do.
+
+The tell is that I never ran the command. My own recovery rule, in this file, is `git status --short` then
+`make check` after a child dies. I ran neither before declaring the death. Had I run the first, I would have
+seen an empty path and known that what I was about to assert was a guess about a process that was still
+running — the run was, by the timestamps, alive for five more minutes after I buried it.
+
+**What it cost.** Nothing in the artifact: the surviving file is better than mine — it has the exact
+`^[ ]{2,}[A-Za-z0-9_-]+:` job-key regex I specified and one more test than I wrote, and it still flags the
+historical line that broke CI (`unquoted_colon_names` returns one hit on `08b6e0b:.github/workflows/ci.yml`,
+zero on the current file). What it cost was a duplicate ~110-line write, and a public statement in the
+dossier and the acceptance draft that was false for the entire time between writing it and the notice
+arriving — a window long enough that I had already quoted its numbers elsewhere.
+
+**What it taught.** Three rules, in order of how much they bit.
+
+1. *A death sentence requires a measurement.* `subagent({action:"status"})` or `git status --short` — either
+   is one call. The failure mode here is not delegation; it is narrating delegated work from expectation,
+   which is I13's arithmetic-as-memory applied to process state, and it is more dangerous because a
+   confidently-wrong ledger entry propagates into every document that cites it.
+2. *A live run can write after you write.* Two actors on one path with no lock resolved silently in favour
+   of whoever flushed last. Write-target isolation assumes you know a child is finished; a timeout notice
+   that arrives *late* breaks the assumption, and the harness gives no warning when a write is overwritten.
+3. *Shrink the verification loop, not the brief.* The child finished its deliverable and then spent its
+   remaining minutes re-running the whole 150-test suite twice, which is what the brief told it to do. At
+   this repo's size, "run `make check`" is no longer a cheap instruction; the next brief says run your own
+   test file, and hand back.
+
+I did not retry a fourth time, and this time for the right reason: the deliverable already existed. The
+floor I take from this is that below roughly 150 lines of reviewed output, delegating is only worth it
+when the point *is* the delegation.
+
+### I26 — the acceptance run found a fake derivation in the incident file about fake derivations
+
+**What happened.** Three defects in the documents, all found by running the check instead of rereading
+it, which is how little of my own writing survives execution.
+
+The dossier's totals line read *"210 m — 58.2% — went into seven runs that timed out
+(`python3 -c 'print(361-301, 210/361)'`)"*. The ratio is right. The first term prints `60` — the minutes
+added by two new ceilings — and sits in the position of a command that appears to derive `210`, the minutes
+lost. It is I13, committed by me into the file whose entire thesis is I13, and it survived a commit, a
+push and a green CI run because nothing in CI evaluates prose arithmetic.
+
+The study guide hardcoded two counts: `143 passed` and `5 errors during collection`. Both were true the
+day I wrote them and became false the moment Stage 13 added seven tests — the guide instructs the reader
+that bare `pytest` produces five errors, and it would have produced seven. Fixed by describing the shape
+instead of the digit: *a green summary line*, *one collection error per test module that imports the
+package*. Shape does not expire; counts have a maturity date, and the next test added redeems it.
+
+And my own acceptance draft claimed the tree was 51 files (it is 52 once the guard lands) and that the
+generation endpoint's URL was "not in the repo". The precise truth is narrower and worth stating:
+`grep -rn "31438\|fd7a:" .` returns nothing outside `.venv/`, so host, port and address are absent — but
+the model identifier `strata-hades/qwen3.8-flash-next-iq3_xxs` is in the dossier header on purpose,
+because which model did this work is part of the evidence. "Nothing secret is here" and "nothing about the
+provider is here" are different claims, and I had written the stronger one.
+
+**What it taught.** The rule the repo now follows in prose: quote the *shape* of an output, or name the
+command that prints it — and keep digits for artefacts. A hardcoded count in a document about a test suite
+is a statement about a moving object, and this repo has been adding to that suite for thirteen stages at
+roughly one commit a day.
 
 ## What the briefs said
 

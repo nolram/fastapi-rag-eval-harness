@@ -1,10 +1,10 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
-**Status: Stages 0–12 complete, plus Stage 8.5** (bootstrap, corpus, chunker, BM25 retrieval,
-`golden.jsonl`, metrics, retrieval eval harness, README + agent dossier, quality gates, CI, AGENT.md,
-the FastAPI service, one honest retriever tuning pass, the LLM-as-judge generation eval, and the three
-ADRs + study guide). Stage 13 (acceptance run + final report) is next. **`make check` has been green since
-Stage 8.5** —
+**Status: Stages 0–13 complete, plus Stage 8.5 — the build is finished and accepted** (bootstrap, corpus,
+chunker, BM25 retrieval, `golden.jsonl`, metrics, retrieval eval harness, README + agent dossier, quality
+gates, CI, AGENT.md, the FastAPI service, one honest retriever tuning pass, the LLM-as-judge generation
+eval, the three ADRs + study guide, and the acceptance run in `docs/acceptance.md`). **`make check` has been
+green since Stage 8.5** —
 the two Stage 8 gates failed on purpose from Stage 8 until the one-variable tuning pass made them
 pass by fixing a real defect, not by moving them.
 Implementation was delegated stage-by-stage to subagents and reviewed by the parent before committing;
@@ -426,6 +426,41 @@ exactly by `retrieve('how many requests per minute', k=1)`. Study-guide exercise
 - **C4 final report**: (1) repo URL · (2) literal `make eval-retrieval` output per case type ·
   (3) pass/fail counts on the **first** run and any gate that failed (left failing) · (4) `git ls-files` tree ·
   (5) every divergence from the prompt and why.
+
+### Stage 13 — complete
+
+**The acceptance run was performed on a fresh clone of the published default branch in `/tmp`, with a venv
+built by `make install`** — not in the working directory the build happened in — because every claim this
+repo makes is a claim about what a stranger gets. Results, all re-runnable and written up in
+`docs/acceptance.md`: `make install` from empty; `make check` green; `make eval-retrieval` exit `0` with
+both gates PASS; the regenerated `eval/report.md` **byte-identical** to the committed one
+(`md5 593d2b1cb5cdf705e2c8432e0f786e3a`, `git status --short` empty) — I8's determinism claim re-proved
+two directories and one venv away from where it was written; the generation eval skipping cleanly with no
+key (exit `0`, no report written); and every expected output the study guide promises, re-measured on the
+clone (exercise 1's five chunk ids in order, the `grep -c` printing `0`, the whole k-sweep table, 11 README
+figures with 0 orphans).
+
+**The I20 debt is paid in both halves.** `tests/test_ci_workflow.py` (10 tests, stdlib only, no PyYAML —
+which is not installed and stays uninstalled per `docs/adr/0003`) scans `.github/workflows/*.yml` for the
+exact defect and asserts a non-empty `jobs:` mapping. Its value is measured, not assumed: fed the historical
+file, `unquoted_colon_names` returns **one hit, line 73 of `08b6e0b:.github/workflows/ci.yml`** and zero on
+the current file. The dynamic half was measured against GitHub's API rather than asserted, and it produced
+a finding worth keeping — a rejected workflow is reported as a run whose **name is the file path** with
+`jobs=0` (run 42755857614), while a real red build has `jobs=1` and the workflow's own name (run
+42705424022). That is the "red build vs rejected file" distinction the stage asked for, in one field.
+
+**The final report** is `docs/acceptance.md`: repo URL, the literal per-bucket eval output, the first run
+kept red and verbatim (`git show ca3bd59:eval/report.md` — recall@5 `0.7778` FAIL, MRR `0.6713` FAIL,
+14/18, left failing for five stages, labels untouched — `git log --oneline -- eval/golden.jsonl` is one
+line long), the `git ls-files` tree at 52 files, twelve divergences from the brief with reasons, and the
+list of what the run does *not* establish.
+
+**What this stage also cost** is in `docs/agent-dossier.md` as I25 and I26: the guard was written twice,
+once by each actor, because I announced a child's death without running the one command that would have
+told me it was alive — and its write, five minutes before its death notice, is the version that shipped.
+And the dossier's own totals line carried a derivation command that did not derive (`361-301` printed the
+minutes added, sitting where `210` minutes lost was claimed), in the file whose thesis is that a number
+must name the command that produced it.
 
 ---
 
