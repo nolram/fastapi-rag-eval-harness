@@ -56,7 +56,7 @@ JUDGE_PROMPT_VERSION: str = "v1"
 JUDGE_KEYS = frozenset({"supported", "should_have_refused", "reason"})
 #: The two comparisons this dataset can support, named once so report prose cannot drift.
 CHECK_ABSTENTION = "human says refuse vs judge should_have_refused"
-CHECK_MUST_NOT_INCLUDE = "human says must_not_include violated vs judge supported=false"
+CHECK_MUST_NOT_INCLUDE = "human says off-scope import vs judge supported=false"
 #: A fence line (```json and its closer) is markup around the payload, never part of the payload.
 _FENCE_LINE = re.compile(r"^[ \t]*(?:```|~~~)[ \t]*\w*[ \t]*$", re.MULTILINE)
 
@@ -103,6 +103,12 @@ class CaseOutcome:
     must_include_coverage: float | None
     must_include_missing: tuple[str, ...]
     must_not_include_present: tuple[str, ...]
+    #: Forbidden terms retrieval put in front of the answerer, none in an expected chunk.
+    #: Context-level, so computed even when the answerer failed and there is no answer text.
+    forbidden_in_context: tuple[str, ...]
+    #: Whether this case carries any prohibition label at all — the denominator of the off-scope
+    #: sentence in the report, which must not be the count of cases that happened to collide.
+    is_prohibited: bool
     abstention_match: bool | None
     cites_nothing: bool
     cited_but_not_retrieved: tuple[str, ...]
@@ -252,6 +258,28 @@ def violated_must_not_include(must_not_include: Sequence[str], answer_text: str)
     normal cases violated something" hides exactly the case a reader would need to look at.
     """
     return _present(must_not_include, answer_text)
+
+
+def forbidden_in_offered_context(
+    must_not_include: Sequence[str], context: Sequence[tuple[str, str]], expected: Sequence[str]
+) -> tuple[str, ...]:
+    """Forbidden strings that sit in the offered context but in none of the expected chunks.
+
+    A prohibition placed this way is not the corpus calling the statement false: the corpus says it,
+    a neighbouring chunk says it, and retrieval handed it over as one of the k. The label is saying
+    *this question should not have imported that rule* — a guard against the retriever's noise, not
+    a fact-check. Recording where the forbidden string lives is what separates "the model invented
+    this" from "the retriever offered this", and those two need different fixes.
+    """
+    if not must_not_include:
+        return ()
+    in_expected = " \n ".join(text for chunk_id, text in context if chunk_id in expected).lower()
+    outside = " \n ".join(text for chunk_id, text in context if chunk_id not in expected).lower()
+    return tuple(
+        label
+        for label in must_not_include
+        if label.lower() not in in_expected and label.lower() in outside
+    )
 
 
 def answer_cites_nothing(abstained: bool, citations: Sequence[str]) -> bool:
@@ -600,6 +628,12 @@ def _answer_and_judge(case: GoldenCase, k_override: int | None, settings: Settin
         must_not_include_present=(
             violated_must_not_include(case.must_not_include, text) if measured else ()
         ),
+        forbidden_in_context=forbidden_in_offered_context(
+            case.must_not_include,
+            tuple((chunk.id, chunk.text) for chunk in found.chunks),
+            case.expected_chunk_ids,
+        ),
+        is_prohibited=bool(case.must_not_include),
         abstention_match=(
             abstention_matches(generated.abstained, case.should_abstain) if measured else None
         ),
@@ -623,10 +657,11 @@ def calibrate(cases: Sequence[CaseOutcome]) -> Calibration:
     """Compare the judge's verdicts with the human labels, and list every disagreement.
 
     Only two comparisons exist, because only those two are labelled per case: ``should_abstain``,
-    and a ``must_not_include`` string the answer actually contains — a prohibition the human called
-    and the answer broke. A clean answer to a ``must_not_include`` case is not evidence either way,
-    so it joins neither denominator. A case whose judge reply could not be parsed is excluded and
-    counted, so an unreadable judge can neither help nor hurt an agreement rate.
+    and a ``must_not_include`` string the answer actually contains — a term the human marked as out
+    of scope for this question and the answer imported anyway. A clean answer to a
+    ``must_not_include`` case is not evidence either way, so it joins neither denominator. A case
+    whose judge reply could not be parsed is excluded and counted, so an unreadable judge cannot
+    help or hurt an agreement rate.
     """
     abstentions = [case for case in cases if case.should_abstain]
     violations = [
@@ -636,10 +671,10 @@ def calibrate(cases: Sequence[CaseOutcome]) -> Calibration:
         CHECK_ABSTENTION, abstentions, lambda case: "should_abstain=true"
     )
     agreement_violations, rows_violations = _check(
-        # The human label is the string this answer was not allowed to contain.
+        # The human label is the term this answer was not allowed to import into this question.
         CHECK_MUST_NOT_INCLUDE,
         violations,
-        lambda case: "violates must_not_include: " + ", ".join(case.must_not_include_present),
+        lambda case: "imports an off-scope term: " + ", ".join(case.must_not_include_present),
     )
     return Calibration(
         agreements=(agreement_abstention, agreement_violations),
@@ -903,6 +938,11 @@ def _judge(result: EvalRun) -> list[str]:
 def _calibration(result: EvalRun) -> list[str]:
     """Judge against the human labels. The disagreement list is the point; the rates label it."""
     calibration = result.calibration
+    prohibited = [
+        case for case in result.cases if case.case_type == TYPE_NORMAL and case.is_prohibited
+    ]
+    n_prohibitions = len(prohibited)
+    n_offscope = sum(1 for case in prohibited if case.forbidden_in_context)
     return [
         "## Calibration: the judge measured against the golden labels",
         "",
@@ -916,8 +956,16 @@ def _calibration(result: EvalRun) -> list[str]:
         f"- {calibration.n_normal_with_violated_must_not_include} `normal` cases had an "
         "answer that "
         "contained one of their `must_not_include` strings — the only cases where the human label "
-        'says "this answer is wrong" and the judge has something to agree or disagree with. A '
-        "clean answer to a `must_not_include` case is not evidence either way and is not counted.",
+        "has something to say about the answer and the judge has something to agree or disagree "
+        "with. A clean answer to a `must_not_include` case is not evidence either way and is not "
+        "counted.",
+        f"- **A `must_not_include` violation here is an off-scope import, not a false statement.** "
+        f"{n_offscope} of the {n_prohibitions} `normal` cases carrying a prohibition have that "
+        "exact string present in the offered context and in none of their expected chunks: the "
+        "corpus states it, retrieval handed it over, and the label says *this question* should not "
+        "have imported it. Where the forbidden string lives is what separates a model that "
+        "invented a fact from an answer that wandered into a neighbouring document, and those two "
+        "need different fixes.",
         "",
         *_table(
             ["check", "agreement", "agreed / compared", "excluded (no usable judge verdict)"],

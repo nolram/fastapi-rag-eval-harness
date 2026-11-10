@@ -1047,3 +1047,69 @@ def test_the_default_judge_is_the_answering_model_and_a_second_one_breaks_the_ti
     """
     assert judge_model_for(live_settings()) == TEST_MODEL
     assert judge_model_for(live_settings(llm_judge_model="other-model")) == "other-model"
+
+
+# ------------------------------------------------------------------ 11. where a forbidden term
+# lives: in the expected chunk, in a neighbour, or nowhere. The label means three different things.
+
+
+def test_a_forbidden_term_is_located_by_where_it_was_found_not_by_that_it_exists() -> None:
+    """The same string, three placements, three different problems.
+
+    In an *expected* chunk the corpus states it there and the label is contestable. In a *neighbour*
+    the label means "this question should not have imported that" — a guard against retrieval noise.
+    Nowhere in the context, and the answer produced it itself, which is the only one of the three
+    that is a model fault.
+    """
+    context = (("a#1", "Use at most 3 retries."), ("b#2", "The budget is 5 attempts."))
+    assert (
+        generation_eval.forbidden_in_offered_context(("at most 3 retries",), context, ("a#1",))
+        == ()
+    )
+    assert generation_eval.forbidden_in_offered_context(
+        ("at most 3 retries",), context, ("b#2",)
+    ) == ("at most 3 retries",)
+    assert (
+        generation_eval.forbidden_in_offered_context(("never mentioned",), context, ("a#1",)) == ()
+    )
+    assert generation_eval.forbidden_in_offered_context((), context, ("a#1",)) == ()
+
+
+def test_the_real_golden_file_carries_four_off_scope_guards_and_no_one_erases_them(
+    full_run: tuple[generation_eval.EvalRun, Provider, Provider],
+) -> None:
+    """A lock on the dataset's shape, not on a model's behaviour.
+
+    Ten of the eighteen ``normal`` cases carry a prohibition, and in four of them the forbidden
+    string sits in a chunk retrieval offers for that very query while appearing in none of the
+    expected chunks. That is what makes a violation an off-scope import rather than a false
+    statement, and it is why the judge and the label disagreed on ``n-018`` without either being
+    wrong about the corpus.
+
+    If a future edit moves a string out of a neighbouring chunk to make a disagreement disappear,
+    this test fails and forces the argument to happen in the open instead.
+    """
+    measured, _, _ = full_run
+    prohibited = [case for case in measured.cases if case.is_prohibited]
+    off_scope = {case.id for case in prohibited if case.forbidden_in_context}
+    assert len(prohibited) == 10
+    assert off_scope == {"n-007", "n-009", "n-010", "n-018"}
+    assert {case.id for case in measured.cases if case.must_not_include_present} <= {
+        case.id for case in measured.cases if case.is_prohibited
+    }
+
+
+def test_the_report_says_off_scope_import_and_never_calls_it_a_false_statement(
+    full_run: tuple[generation_eval.EvalRun, Provider, Provider],
+) -> None:
+    """The wording is the measurement's claim, so it is asserted like one.
+
+    The first draft of this report said the human label "says this answer is wrong", which is a
+    stronger statement than the label makes and was written before anyone had counted how many
+    prohibitions live in a neighbouring chunk.
+    """
+    text = render_markdown(full_run[0])
+    assert "off-scope import, not a false statement" in text
+    assert "4 of the 10 `normal` cases carrying a prohibition" in text
+    assert "this answer is wrong" not in text
+    assert "imports an off-scope term:" in text
