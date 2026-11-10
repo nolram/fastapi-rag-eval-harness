@@ -1,0 +1,42 @@
+"""Environment-backed settings: the only module in ``lumen`` that reads the environment.
+
+Every value maps to a name in ``.env.example``. ``.env`` is optional: with no file and no exported
+variables this module still constructs a complete ``Settings`` whose defaults are the honest,
+non-paying defaults (no key, stub generation, no score threshold).
+
+Test override point: routes call ``config.get_settings()`` per request rather than importing the
+function object, so tests override configuration by monkeypatching ``lumen.config.get_settings``.
+"""
+
+import functools
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Runtime configuration for retrieval depth, the generation provider and the abstain gate."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # Empty key is the default everywhere, including `make check` and CI: it selects stub mode in
+    # lumen.generation, so no test, gate or demo can spend money or depend on an external provider.
+    llm_api_key: str = ""
+    llm_model: str = ""
+    llm_base_url: str = "https://api.example.com/v1"
+
+    # Request default for `k` when the caller does not send one; the HTTP schema still bounds `k`.
+    lumen_top_k: int = 5
+
+    # Score-based abstention is DISABLED by default and must stay that way until a measurement says
+    # otherwise. This repo measured raw retrieval scores on eval/report.md and found that no raw
+    # score threshold separates abstention cases from answerable ones: abstention top_score spans
+    # 4.4589-7.2278 while answerable top_score spans 4.5290-16.5259, and the cheapest cutoff that
+    # separates any of them costs 7 of 18 answerable cases. So `None` means "never abstain on
+    # score", and setting this field requires citing that measurement (a number, not a guess).
+    lumen_abstain_threshold: float | None = None
+
+
+@functools.cache
+def get_settings() -> Settings:
+    """Process-wide cached settings; monkeypatch this function in tests to inject configuration."""
+    return Settings()
