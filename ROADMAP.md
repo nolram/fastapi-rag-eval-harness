@@ -1,5 +1,8 @@
 # ROADMAP — `fastapi-rag-eval-harness`
 
+**Where to read this file from:** Stages 0–13 are history and are closed. If you are deciding what to do
+next, start at **The objective gap**, then Stage 14.
+
 **Status: Stages 0–13 complete, plus Stage 8.5 — the build is finished and accepted** (bootstrap, corpus,
 chunker, BM25 retrieval, `golden.jsonl`, metrics, retrieval eval harness, README + agent dossier, quality
 gates, CI, AGENT.md, the FastAPI service, one honest retriever tuning pass, the LLM-as-judge generation
